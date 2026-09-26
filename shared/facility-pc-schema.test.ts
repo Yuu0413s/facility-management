@@ -98,6 +98,11 @@ describe('facilityPcInputSchema', () => {
     expect(facilityPcInputSchema.safeParse({ ...validInput, installedOn: '0001-01-01' }).success).toBe(true)
   })
 
+  it('形式が違う設置日には、画面の入力形式（yyyymmdd）でメッセージを返す', () => {
+    const result = facilityPcInputSchema.safeParse({ ...validInput, installedOn: '2026/09/26' })
+    expect(result.error?.issues.map((issue) => issue.message)).toEqual(['yyyymmdd（8桁の数字）で入力してください'])
+  })
+
   it('うるう日を受け付ける', () => {
     expect(facilityPcInputSchema.safeParse({ ...validInput, installedOn: '2024-02-29' }).success).toBe(true)
   })

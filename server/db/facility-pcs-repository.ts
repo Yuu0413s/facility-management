@@ -29,6 +29,7 @@ type Sql = NeonQueryFunction<false, false>
 const UNIQUE_VIOLATION = '23505'
 
 // 並び順は DB の既定の照合順序に任せず、文字コード順（COLLATE "C"）を明示する（設計 7-6）
+// 登録日は、サーバー（UTC）ではなく日本時間の日付にする
 // DATE 型はドライバが JS の Date に変換してタイムゾーンでずれるため、文字列で取り出す
 const COLUMNS = `
   id,
@@ -41,7 +42,8 @@ const COLUMNS = `
   license_key AS "licenseKey",
   account,
   password,
-  remarks
+  remarks,
+  to_char(created_at AT TIME ZONE 'Asia/Tokyo', 'YYYY-MM-DD') AS "registeredOn"
 `
 
 // 並べ替えの列名はプレースホルダにできないため、許可済みの対応表からだけ組み立てる。

@@ -10,7 +10,7 @@ import {
   type FacilityPcInput,
 } from '../../shared/facility-pc-schema'
 import { ApiError, createFacilityPc, fetchFacilityPc, updateFacilityPc, type FieldErrors } from '../api/facility-pcs-client'
-import { toDisplayDate, toIsoDate } from '../lib/date'
+import { toInputDate, toIsoDate } from '../lib/date'
 import { FACILITY_PC_LABELS as LABELS } from '../lib/facility-pc-labels'
 
 type Field = keyof FacilityPcInput
@@ -30,9 +30,9 @@ const EMPTY_VALUES: FormValues = {
 }
 
 // 空欄（null）の項目は、空の入力欄として表示する
-const toFormValues = ({ id: _, ...pc }: FacilityPc): FormValues => ({
+const toFormValues = ({ id: _, registeredOn: __, ...pc }: FacilityPc): FormValues => ({
   ...(Object.fromEntries(Object.entries(pc).map(([field, value]) => [field, value ?? ''])) as FormValues),
-  installedOn: toDisplayDate(pc.installedOn),
+  installedOn: toInputDate(pc.installedOn),
 })
 
 const errorMessage = (error: unknown) => (error instanceof Error ? error.message : '予期しないエラーが発生しました')
@@ -177,7 +177,7 @@ export function FacilityPcFormPage() {
                 {...props}
                 type="text"
                 inputMode="numeric"
-                placeholder="yyyy/mm/dd"
+                placeholder="yyyymmdd"
                 value={values.installedOn}
                 onChange={(event) => setValue('installedOn', event.target.value)}
               />
@@ -191,7 +191,7 @@ export function FacilityPcFormPage() {
                 aria-label="カレンダーから選択"
                 tabIndex={-1}
                 value={/^\d{4}-\d{2}-\d{2}$/.test(isoInstalledOn) ? isoInstalledOn : ''}
-                onChange={(event) => event.target.value && setValue('installedOn', toDisplayDate(event.target.value))}
+                onChange={(event) => event.target.value && setValue('installedOn', toInputDate(event.target.value))}
               />
             </div>
           )}

@@ -24,6 +24,7 @@ const saved: FacilityPc = {
   account: 'user1',
   password: 'secret',
   remarks: '1行目\n2行目',
+  registeredOn: '2026-09-20',
 }
 
 function ListStub() {
@@ -46,7 +47,7 @@ const fillAll = async () => {
   const user = userEvent.setup()
   await user.type(screen.getByLabelText('施設名'), ' 中央病院 ')
   await user.type(screen.getByLabelText('PC名'), 'PC-001')
-  await user.type(screen.getByLabelText('設置日'), '2026/9/26')
+  await user.type(screen.getByLabelText('設置日'), '20260926')
   await user.type(screen.getByLabelText('OSバージョン'), 'Windows 11')
   await user.selectOptions(screen.getByLabelText('Office種類'), 'H&B')
   await user.selectOptions(screen.getByLabelText('Officeバージョン'), '2021')
@@ -66,7 +67,7 @@ describe('FacilityPcFormPage（新規登録）', () => {
     const user = await fillAll()
     await user.click(screen.getByRole('button', { name: '登録する' }))
 
-    expect(createFacilityPc).toHaveBeenCalledWith({ ...saved, id: undefined })
+    expect(createFacilityPc).toHaveBeenCalledWith({ ...saved, id: undefined, registeredOn: undefined })
     expect(await screen.findByText('一覧ページ ?order=desc&page=2')).toBeInTheDocument()
   })
 
@@ -114,20 +115,31 @@ describe('FacilityPcFormPage（新規登録）', () => {
     expect(screen.queryByText('任意')).not.toBeInTheDocument()
   })
 
+  it('設置日の見本の文字は yyyymmdd で、yyyy/mm/dd の形は受け付けない', async () => {
+    renderPage('/new')
+    expect(screen.getByLabelText('設置日')).toHaveAttribute('placeholder', 'yyyymmdd')
+    const user = await fillAll()
+    await user.clear(screen.getByLabelText('設置日'))
+    await user.type(screen.getByLabelText('設置日'), '2026/09/26')
+    await user.click(screen.getByRole('button', { name: '登録する' }))
+    expect(screen.getByLabelText('設置日')).toHaveAccessibleDescription('yyyymmdd（8桁の数字）で入力してください')
+    expect(createFacilityPc).not.toHaveBeenCalled()
+  })
+
   it('存在しない日付はエラーにする', async () => {
     renderPage('/new')
     const user = await fillAll()
     await user.clear(screen.getByLabelText('設置日'))
-    await user.type(screen.getByLabelText('設置日'), '2026/02/30')
+    await user.type(screen.getByLabelText('設置日'), '20260230')
     await user.click(screen.getByRole('button', { name: '登録する' }))
     expect(screen.getByLabelText('設置日')).toHaveAccessibleDescription('存在しない日付です')
     expect(createFacilityPc).not.toHaveBeenCalled()
   })
 
-  it('カレンダーで選んだ日付を yyyy/mm/dd で入力欄に反映する', () => {
+  it('カレンダーで選んだ日付を yyyymmdd で入力欄に反映する', () => {
     renderPage('/new')
     fireEvent.change(screen.getByLabelText('カレンダーから選択'), { target: { value: '2026-09-26' } })
-    expect(screen.getByLabelText('設置日')).toHaveValue('2026/09/26')
+    expect(screen.getByLabelText('設置日')).toHaveValue('20260926')
   })
 
   it('備考の文字数を表示する', async () => {
@@ -162,7 +174,7 @@ describe('FacilityPcFormPage（編集）', () => {
 
     expect(await screen.findByDisplayValue('中央病院')).toBeInTheDocument()
     expect(fetchFacilityPc).toHaveBeenCalledWith(7)
-    expect(screen.getByLabelText('設置日')).toHaveValue('2026/09/26')
+    expect(screen.getByLabelText('設置日')).toHaveValue('20260926')
     expect(screen.getByLabelText('備考')).toHaveValue('1行目\n2行目')
 
     const user = userEvent.setup()
@@ -170,7 +182,7 @@ describe('FacilityPcFormPage（編集）', () => {
     await user.type(screen.getByLabelText('OSバージョン'), 'Windows 11 24H2')
     await user.click(screen.getByRole('button', { name: '更新する' }))
 
-    const { id: _, ...input } = saved
+    const { id: _, registeredOn: __, ...input } = saved
     expect(updateFacilityPc).toHaveBeenCalledWith(7, { ...input, osVersion: 'Windows 11 24H2' })
     expect(await screen.findByText(/一覧ページ/)).toBeInTheDocument()
   })

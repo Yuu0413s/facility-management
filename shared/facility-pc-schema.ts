@@ -13,17 +13,22 @@ const optional = <T extends z.ZodType>(schema: T) => z.preprocess(blankToNull, s
 
 const optionalText = optional(z.string().trim())
 
-// 形式 → 実在する日付の順に確認し、最初に引っかかった理由だけを返す
+// 形式 → 実在する日付の順に確認し、最初に引っかかった理由だけを返す（pipe で前段が通ったときだけ後段を実行する）
 const isoDate = z
   .string()
   .trim()
-  .regex(/^\d{4}-\d{2}-\d{2}$/, 'yyyy/mm/dd 形式で入力してください')
-  .refine((value) => {
-    const date = new Date(`${value}T00:00:00Z`)
-    return !Number.isNaN(date.getTime()) && date.toISOString().startsWith(value)
-  }, '存在しない日付です')
-  // PostgreSQL の DATE には 0 年が無いため、保存時に 500 にならないよう先に弾く
-  .refine((value) => value >= '0001-01-01', '存在しない日付です')
+  // 画面の入力欄は yyyymmdd。画面側で yyyy-mm-dd に変換してから送るので、形式違いは入力欄の形式で伝える
+  .regex(/^\d{4}-\d{2}-\d{2}$/, 'yyyymmdd（8桁の数字）で入力してください')
+  .pipe(
+    z
+      .string()
+      .refine((value) => {
+        const date = new Date(`${value}T00:00:00Z`)
+        return !Number.isNaN(date.getTime()) && date.toISOString().startsWith(value)
+      }, '存在しない日付です')
+      // PostgreSQL の DATE には 0 年が無いため、保存時に 500 にならないよう先に弾く
+      .refine((value) => value >= '0001-01-01', '存在しない日付です'),
+  )
 
 export const facilityPcInputSchema = z
   .object({
@@ -56,5 +61,6 @@ export type FacilityPcInput = z.infer<typeof facilityPcInputSchema>
 export type SortKey = (typeof SORT_KEYS)[number]
 export type SortOrder = z.infer<typeof listQuerySchema>['order']
 export type ListQuery = { q?: string; sort: SortKey; order: SortOrder; page: number }
-export type FacilityPc = FacilityPcInput & { id: number }
+// registeredOn（登録日）は DB が自動で記録する created_at の日本時間の日付。登録・更新では受け付けない
+export type FacilityPc = FacilityPcInput & { id: number; registeredOn: string }
 export type FacilityPcPage = { items: FacilityPc[]; total: number; page: number; perPage: number }

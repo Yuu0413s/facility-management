@@ -25,6 +25,7 @@ const pc: FacilityPc = {
   account: 'user1',
   password: 'PASSWORD-SECRET',
   remarks: 'メモ',
+  registeredOn: '2026-09-20',
 }
 const pageOf = (items: FacilityPc[], overrides: Partial<FacilityPcPage> = {}): FacilityPcPage => ({
   items,
@@ -78,11 +79,18 @@ describe('FacilityPcListPage', () => {
     renderPage()
     const row = await screen.findByRole('row', { name: /中央病院/ })
     expect(lastQuery()).toEqual({ q: undefined, sort: 'facilityName', order: 'asc', page: 1 })
-    for (const text of ['中央病院', 'PC-001', '2026/09/26', 'Windows 11', 'H&B', '2021', 'user1', 'メモ']) {
+    for (const text of ['中央病院', 'PC-001', '2026/09/26', 'Windows 11', 'H&B', '2021', 'user1', '2026/09/20', 'メモ']) {
       expect(within(row).getByText(text)).toBeInTheDocument()
     }
     expect(within(row).queryByText('KEY-SECRET')).not.toBeInTheDocument()
     expect(within(row).queryByText('PASSWORD-SECRET')).not.toBeInTheDocument()
+  })
+
+  it('「登録日」の列を「パスワード」と「備考」の間に表示する', async () => {
+    renderPage()
+    await screen.findByRole('row', { name: /中央病院/ })
+    const headers = screen.getAllByRole('columnheader').map((header) => header.textContent?.replace(/[▲▼↕]/g, '').trim())
+    expect(headers.slice(headers.indexOf('パスワード'), headers.indexOf('パスワード') + 3)).toEqual(['パスワード', '登録日', '備考'])
   })
 
   it('施設名の見出しを押すたびに昇順・降順を切り替え、1ページ目に戻る', async () => {
@@ -162,6 +170,7 @@ describe('FacilityPcListPage', () => {
       account: null,
       password: null,
       remarks: null,
+      registeredOn: '2026-09-26',
     }
     vi.mocked(fetchFacilityPcPage).mockResolvedValue(pageOf([blank]))
     renderPage()

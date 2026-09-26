@@ -37,12 +37,22 @@ describe.skipIf(!databaseUrl)('facilityPcRepository（Neon テスト用ブラン
   describe('create / findById', () => {
     it('登録した行を id 付きで返し、id で取得できる', async () => {
       const created = await repository.create({ ...baseInput, remarks: '1行目\n2行目' })
-      expect(created).toEqual({ ...baseInput, remarks: '1行目\n2行目', id: expect.any(Number) })
+      expect(created).toEqual({ ...baseInput, remarks: '1行目\n2行目', id: expect.any(Number), registeredOn: expect.any(String) })
       expect(await repository.findById(created.id)).toEqual(created)
     })
 
     it('存在しない id は null', async () => {
       expect(await repository.findById(999999)).toBeNull()
+    })
+
+    it('登録日は登録日時（created_at）を日本時間の日付にしたもの', async () => {
+      const created = await repository.create(baseInput)
+      // UTC では 9/25 15:30 だが、日本時間では 9/26 0:30
+      await sql`UPDATE facility_pcs SET created_at = '2026-09-25T15:30:00Z' WHERE id = ${created.id}`
+      expect((await repository.findById(created.id))?.registeredOn).toBe('2026-09-26')
+      const [listed] = (await repository.list({ sort: 'facilityName', order: 'asc', page: 1 })).items
+      expect(listed.registeredOn).toBe('2026-09-26')
+      expect((await repository.listAll())[0].registeredOn).toBe('2026-09-26')
     })
 
     it('同じ施設に同じPC名は登録できない', async () => {
@@ -72,7 +82,7 @@ describe.skipIf(!databaseUrl)('facilityPcRepository（Neon テスト用ブラン
 
     it('空欄の項目は null のまま保存・取得できる', async () => {
       const created = await repository.create(onlyNames('中央病院', 'PC-001'))
-      expect(await repository.findById(created.id)).toEqual({ ...onlyNames('中央病院', 'PC-001'), id: created.id })
+      expect(await repository.findById(created.id)).toEqual({ ...onlyNames('中央病院', 'PC-001'), id: created.id, registeredOn: created.registeredOn })
     })
 
     it('施設名かPC名が空欄の行は、重複チェックの対象外になる', async () => {
@@ -110,7 +120,7 @@ describe.skipIf(!databaseUrl)('facilityPcRepository（Neon テスト用ブラン
     it('内容を更新し、updated_at を進める', async () => {
       const created = await repository.create(baseInput)
       const updated = await repository.update(created.id, { ...baseInput, osVersion: 'Windows 11 24H2', remarks: 'メモ' })
-      expect(updated).toEqual({ ...baseInput, id: created.id, osVersion: 'Windows 11 24H2', remarks: 'メモ' })
+      expect(updated).toEqual({ ...baseInput, id: created.id, registeredOn: created.registeredOn, osVersion: 'Windows 11 24H2', remarks: 'メモ' })
 
       const [row] = await sql`SELECT updated_at > created_at AS advanced FROM facility_pcs WHERE id = ${created.id}`
       expect(row.advanced).toBe(true)

@@ -15,7 +15,7 @@ const input: FacilityPcInput = {
   password: 'secret',
   remarks: null,
 }
-const saved: FacilityPc = { ...input, id: 1 }
+const saved: FacilityPc = { ...input, id: 1, registeredOn: '2026-09-26' }
 
 const env = { DATABASE_URL: 'postgres://example', BASIC_AUTH_USER: 'u', BASIC_AUTH_PASSWORD: 'p' }
 
@@ -121,6 +121,13 @@ describe('POST /api/facility-pcs', () => {
     const res = await send('POST', '/api/facility-pcs', { ...input, facilityName: ' 中央病院 ', remarks: '' })
     expect(res.status).toBe(201)
     expect(await res.json()).toEqual(saved)
+    expect(repository.create).toHaveBeenCalledWith(input)
+  })
+
+  it('登録日は送られてきても無視する（DB が自動で記録するため）', async () => {
+    const { repository, send } = setup()
+    repository.create.mockResolvedValue(saved)
+    await send('POST', '/api/facility-pcs', { ...input, registeredOn: '2000-01-01' })
     expect(repository.create).toHaveBeenCalledWith(input)
   })
 

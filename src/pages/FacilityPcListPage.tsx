@@ -148,6 +148,7 @@ export function FacilityPcListPage() {
                   <th>{LABELS.licenseKey}</th>
                   <th>{LABELS.account}</th>
                   <th>{LABELS.password}</th>
+                  <th>{LABELS.registeredOn}</th>
                   <th>{LABELS.remarks}</th>
                   <th>操作</th>
                 </tr>
@@ -155,7 +156,7 @@ export function FacilityPcListPage() {
               <tbody>
                 {result.items.length === 0 ? (
                   <tr>
-                    <td colSpan={11} className="empty">
+                    <td colSpan={12} className="empty">
                       登録されたデータはありません
                     </td>
                   </tr>
@@ -175,6 +176,7 @@ export function FacilityPcListPage() {
                       <td>
                         {pc.password && <SecretCell value={pc.password} label={LABELS.password} />}
                       </td>
+                      <td>{toDisplayDate(pc.registeredOn)}</td>
                       <td className="remarks">{pc.remarks}</td>
                       <td className="row-actions">
                         <Link to={`/edit/${pc.id}`} state={{ returnTo }}>

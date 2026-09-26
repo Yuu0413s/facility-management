@@ -64,6 +64,16 @@ describe('facilityPcInputSchema', () => {
     expect(facilityPcInputSchema.safeParse({ ...validInput, installedOn }).success).toBe(false)
   })
 
+  it('設置日が空欄なら「入力してください」だけを返す', () => {
+    const result = facilityPcInputSchema.safeParse({ ...validInput, installedOn: '' })
+    expect(result.error?.issues.map((issue) => issue.message)).toEqual(['入力してください'])
+  })
+
+  it('年が 0000 の日付は DB に保存できないので弾く', () => {
+    expect(facilityPcInputSchema.safeParse({ ...validInput, installedOn: '0000-01-01' }).success).toBe(false)
+    expect(facilityPcInputSchema.safeParse({ ...validInput, installedOn: '0001-01-01' }).success).toBe(true)
+  })
+
   it('うるう日を受け付ける', () => {
     expect(facilityPcInputSchema.safeParse({ ...validInput, installedOn: '2024-02-29' }).success).toBe(true)
   })

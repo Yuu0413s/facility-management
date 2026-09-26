@@ -1,3 +1,4 @@
+import { inspect } from 'node:util'
 import type { FacilityPc, FacilityPcInput } from '../shared/facility-pc-schema'
 import { createApp } from './app'
 import { DuplicateFacilityPcError, type FacilityPcRepository } from './db/facility-pcs-repository'
@@ -64,6 +65,15 @@ describe('GET /api/facility-pcs', () => {
   })
 })
 
+describe('キャッシュ', () => {
+  it('パスワードを含むため、API の応答はブラウザに保存させない', async () => {
+    const { repository, request } = setup()
+    repository.listAll.mockResolvedValue([saved])
+    const res = await request('/api/facility-pcs/export')
+    expect(res.headers.get('Cache-Control')).toBe('no-store')
+  })
+})
+
 describe('GET /api/facility-pcs/export', () => {
   it('全件を返す', async () => {
     const { repository, request } = setup()
@@ -90,7 +100,7 @@ describe('GET /api/facility-pcs/:id', () => {
     expect((await request('/api/facility-pcs/99')).status).toBe(404)
   })
 
-  it.each(['abc', '0', '1.5'])('id=%s は DB に問い合わせず 404', async (id) => {
+  it.each(['abc', '0', '1.5', '2147483648', '9'.repeat(400)])('id=%s は DB に問い合わせず 404', async (id) => {
     const { repository, request } = setup()
     expect((await request(`/api/facility-pcs/${id}`)).status).toBe(404)
     expect(repository.findById).not.toHaveBeenCalled()
@@ -124,13 +134,30 @@ describe('POST /api/facility-pcs', () => {
     expect(((await res.json()) as { message: string }).message).toBe('同じ施設に同じPC名がすでに登録されています')
   })
 
-  it('想定外のエラーは 500 で詳細を返さない', async () => {
+  it('想定外のエラーは 500 で、レスポンスにもログにも詳細（接続文字列など）を出さない', async () => {
     const { repository, send } = setup()
-    vi.spyOn(console, 'error').mockImplementation(() => {})
-    repository.create.mockRejectedValue(new Error('connection string postgres://secret'))
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+    repository.create.mockRejectedValue(Object.assign(new Error('connection string postgres://user:TOPSECRET@host'), { code: '08006' }))
     const res = await send('POST', '/api/facility-pcs', input)
+
     expect(res.status).toBe(500)
-    expect(await res.text()).not.toContain('secret')
+    expect(await res.text()).not.toContain('TOPSECRET')
+    expect(consoleError).toHaveBeenCalled()
+    // console.error が実際に出力する形（util.inspect）で確認する
+    expect(inspect(consoleError.mock.calls)).not.toContain('TOPSECRET')
+    expect(inspect(consoleError.mock.calls)).toContain('08006')
+    consoleError.mockRestore()
+  })
+
+  it('JSON 以外で送られた登録は 400 にする（別サイトのフォームからの送信を防ぐ）', async () => {
+    const { repository, request } = setup()
+    const res = await request('/api/facility-pcs', {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain' },
+      body: JSON.stringify(input),
+    })
+    expect(res.status).toBe(400)
+    expect(repository.create).not.toHaveBeenCalled()
   })
 })
 

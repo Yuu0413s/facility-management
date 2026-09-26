@@ -7,15 +7,22 @@ export const PER_PAGE = 50
 
 const requiredText = z.string('入力してください').trim().min(1, '入力してください')
 
-// 形式だけでなく、2026-02-30 のような存在しない日付も弾く
+// 空欄 → 形式 → 実在する日付の順に確認し、最初に引っかかった理由だけを返す
 const isoDate = z
   .string('入力してください')
   .trim()
-  .regex(/^\d{4}-\d{2}-\d{2}$/, 'yyyy/mm/dd 形式で入力してください')
-  .refine((value) => {
-    const date = new Date(`${value}T00:00:00Z`)
-    return !Number.isNaN(date.getTime()) && date.toISOString().startsWith(value)
-  }, '存在しない日付です')
+  .min(1, '入力してください')
+  .pipe(
+    z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/, 'yyyy/mm/dd 形式で入力してください')
+      .refine((value) => {
+        const date = new Date(`${value}T00:00:00Z`)
+        return !Number.isNaN(date.getTime()) && date.toISOString().startsWith(value)
+      }, '存在しない日付です')
+      // PostgreSQL の DATE には 0 年が無いため、保存時に 500 にならないよう先に弾く
+      .refine((value) => value >= '0001-01-01', '存在しない日付です'),
+  )
 
 export const facilityPcInputSchema = z.object({
   facilityName: requiredText,

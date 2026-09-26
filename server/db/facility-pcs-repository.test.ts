@@ -102,6 +102,12 @@ describe.skipIf(!databaseUrl)('facilityPcRepository（Neon テスト用ブラン
       expect(names(result.items)).toEqual(['B病院/PC-1', 'B病院/PC-2', 'A病院/PC-9'])
     })
 
+    it('並び順は DB の設定によらず文字コード順（大文字が小文字より先）', async () => {
+      await seed([['a病院', 'PC-1'], ['B病院', 'PC-1']])
+      const result = await repository.list({ order: 'asc', page: 1 })
+      expect(names(result.items)).toEqual(['B病院/PC-1', 'a病院/PC-1'])
+    })
+
     it('施設名の部分一致で絞り込み、total も絞り込み後の件数になる', async () => {
       await seed([['中央病院', 'PC-1'], ['中央クリニック', 'PC-1'], ['東病院', 'PC-1']])
       const result = await repository.list({ q: '中央', order: 'asc', page: 1 })

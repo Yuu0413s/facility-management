@@ -39,6 +39,8 @@ export function FacilityPcListPage() {
     // 条件を素早く切り替えたとき、古いリクエストの結果で上書きしないようにする
     let isCancelled = false
     setError(null)
+    // 前の条件の表を残すと、失敗時に別の条件のデータを編集・削除できてしまうため、一度消す
+    setResult(null)
     fetchFacilityPcPage({ q, order, page })
       .then((data) => !isCancelled && setResult(data))
       .catch((e: unknown) => !isCancelled && setError(errorMessage(e)))
@@ -48,6 +50,14 @@ export function FacilityPcListPage() {
   }, [q, order, page, reloadCount])
 
   const updateQuery = (next: Partial<ListQuery>) => setSearchParams(toSearchParams({ ...query, ...next }))
+
+  // 最終ページの最後の1件を削除したときなど、データがあるのに範囲外のページにいる場合は最終ページへ移る
+  const lastPage = result ? Math.max(1, Math.ceil(result.total / result.perPage)) : null
+  useEffect(() => {
+    if (lastPage !== null && page > lastPage) {
+      setSearchParams(toSearchParams({ q, order, page: lastPage }), { replace: true })
+    }
+  }, [lastPage, page, q, order, setSearchParams])
 
   const handleSearch = (event: FormEvent) => {
     event.preventDefault()
@@ -107,6 +117,8 @@ export function FacilityPcListPage() {
           {error}
         </p>
       )}
+
+      {!result && !error && <p>読み込み中…</p>}
 
       {result && (
         <>

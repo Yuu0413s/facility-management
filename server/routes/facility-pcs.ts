@@ -22,8 +22,13 @@ const validate = <Target extends 'json' | 'query', Schema extends z.ZodType>(tar
     }
   })
 
-// 数字以外や 0 以下の id は DB に問い合わせるまでもなく存在しない
-const parseId = (raw: string) => (/^[1-9]\d*$/.test(raw) ? Number(raw) : null)
+// id 列は INTEGER。数字以外・0 以下・INTEGER の範囲外は DB に問い合わせるまでもなく存在しない
+const MAX_ID = 2_147_483_647
+const parseId = (raw: string) => {
+  if (!/^[1-9]\d*$/.test(raw)) return null
+  const id = Number(raw)
+  return id <= MAX_ID ? id : null
+}
 
 const withDuplicateAs409 = async (c: { json: (body: unknown, status: 409) => Response }, action: () => Promise<Response>) => {
   try {

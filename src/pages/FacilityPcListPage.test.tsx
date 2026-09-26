@@ -53,7 +53,8 @@ const renderPage = (initialEntry = '/') =>
 const lastQuery = () => vi.mocked(fetchFacilityPcPage).mock.lastCall?.[0]
 
 beforeEach(() => {
-  vi.mocked(fetchFacilityPcPage).mockResolvedValue(pageOf([pc]))
+  // 前のテストで使われずに残った mockResolvedValueOnce を持ち越さない
+  vi.mocked(fetchFacilityPcPage).mockReset().mockResolvedValue(pageOf([pc]))
 })
 afterEach(() => vi.restoreAllMocks())
 
@@ -70,15 +71,16 @@ describe('FacilityPcListPage', () => {
   })
 
   it('施設名の見出しを押すたびに昇順・降順を切り替え、1ページ目に戻る', async () => {
+    vi.mocked(fetchFacilityPcPage).mockResolvedValue(pageOf([pc], { total: 120 }))
     renderPage('/?page=2')
-    const header = await screen.findByRole('columnheader', { name: /施設名/ })
-    expect(header).toHaveAttribute('aria-sort', 'ascending')
+    const sortHeader = () => screen.findByRole('columnheader', { name: /施設名/ })
+    expect(await sortHeader()).toHaveAttribute('aria-sort', 'ascending')
 
-    await userEvent.click(within(header).getByRole('button'))
+    await userEvent.click(within(await sortHeader()).getByRole('button'))
     await waitFor(() => expect(lastQuery()).toEqual({ q: undefined, order: 'desc', page: 1 }))
-    expect(header).toHaveAttribute('aria-sort', 'descending')
+    expect(await sortHeader()).toHaveAttribute('aria-sort', 'descending')
 
-    await userEvent.click(within(header).getByRole('button'))
+    await userEvent.click(within(await sortHeader()).getByRole('button'))
     await waitFor(() => expect(lastQuery()).toMatchObject({ order: 'asc' }))
   })
 
@@ -136,6 +138,33 @@ describe('FacilityPcListPage', () => {
     vi.mocked(fetchFacilityPcPage).mockResolvedValue(pageOf([]))
     renderPage()
     expect(await screen.findByText('登録されたデータはありません')).toBeInTheDocument()
+  })
+
+  it('条件を変えた取得に失敗したら、前の条件の表を消して操作できないようにする', async () => {
+    vi.mocked(fetchFacilityPcPage)
+      .mockResolvedValueOnce(pageOf([pc], { total: 120 }))
+      .mockRejectedValueOnce(new ApiError(500, 'サーバーでエラーが発生しました'))
+    renderPage()
+    await userEvent.click(await screen.findByRole('button', { name: '次へ' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('サーバーでエラーが発生しました')
+    expect(screen.queryByRole('row', { name: /中央病院/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '削除' })).not.toBeInTheDocument()
+  })
+
+  it('取得中は「読み込み中」を表示する', async () => {
+    vi.mocked(fetchFacilityPcPage).mockReturnValue(new Promise(() => {}))
+    renderPage()
+    expect(await screen.findByText('読み込み中…')).toBeInTheDocument()
+  })
+
+  it('範囲外のページ（最終ページの最後の1件を削除した後など）は最終ページに移動する', async () => {
+    vi.mocked(fetchFacilityPcPage)
+      .mockResolvedValueOnce(pageOf([], { total: 50, page: 2 }))
+      .mockResolvedValueOnce(pageOf([pc], { total: 50 }))
+    renderPage('/?page=2')
+    await waitFor(() => expect(lastQuery()).toMatchObject({ page: 1 }))
+    expect(await screen.findByRole('row', { name: /中央病院/ })).toBeInTheDocument()
   })
 
   it('取得に失敗したらエラーメッセージを表示する', async () => {

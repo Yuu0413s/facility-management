@@ -27,6 +27,7 @@ type Sql = NeonQueryFunction<false, false>
 
 const UNIQUE_VIOLATION = '23505'
 
+// 並び順は DB の既定の照合順序に任せず、文字コード順（COLLATE "C"）を明示する（設計 7-6）
 // DATE 型はドライバが JS の Date に変換してタイムゾーンでずれるため、文字列で取り出す
 const COLUMNS = `
   id,
@@ -56,25 +57,29 @@ const rethrowDuplicate = (error: unknown): never => {
 export const createFacilityPcRepository = (sql: Sql): FacilityPcRepository => ({
   async list({ q, order, page }) {
     const pattern = q === undefined ? null : toContainsPattern(q)
-    const where = `WHERE ($1::text IS NULL OR facility_name ILIKE $1)`
+    const where = `WHERE ($1::text IS NULL OR facility_name ILIKE $1 ESCAPE '\\')`
     // ORDER BY の方向はプレースホルダにできないため、許可済みの2値からだけ組み立てる
     const direction = order === 'desc' ? 'DESC' : 'ASC'
 
-    const [items, counts] = await sql.transaction([
-      sql.query(
-        `SELECT ${COLUMNS} FROM facility_pcs ${where}
-         ORDER BY facility_name ${direction}, pc_name ASC, id ASC
-         LIMIT $2 OFFSET $3`,
-        [pattern, PER_PAGE, (page - 1) * PER_PAGE],
-      ),
-      sql.query(`SELECT count(*)::int AS total FROM facility_pcs ${where}`, [pattern]),
-    ])
+    // RepeatableRead で2本の SELECT に同じ時点のデータを見せ、items と total の食い違いを防ぐ
+    const [items, counts] = await sql.transaction(
+      [
+        sql.query(
+          `SELECT ${COLUMNS} FROM facility_pcs ${where}
+           ORDER BY facility_name COLLATE "C" ${direction}, pc_name COLLATE "C" ASC, id ASC
+           LIMIT $2 OFFSET $3`,
+          [pattern, PER_PAGE, (page - 1) * PER_PAGE],
+        ),
+        sql.query(`SELECT count(*)::int AS total FROM facility_pcs ${where}`, [pattern]),
+      ],
+      { isolationLevel: 'RepeatableRead', readOnly: true },
+    )
 
     return { items: items as FacilityPc[], total: counts[0].total as number, page, perPage: PER_PAGE }
   },
 
   async listAll() {
-    const rows = await sql.query(`SELECT ${COLUMNS} FROM facility_pcs ORDER BY facility_name ASC, pc_name ASC, id ASC`)
+    const rows = await sql.query(`SELECT ${COLUMNS} FROM facility_pcs ORDER BY facility_name COLLATE "C" ASC, pc_name COLLATE "C" ASC, id ASC`)
     return rows as FacilityPc[]
   },
 

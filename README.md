@@ -38,10 +38,14 @@ Neon の SQL Editor で [db/schema.sql](db/schema.sql) を1回実行する。
    - フレームワーク プリセット: なし（または Vite）
    - ビルドコマンド: `npm run build`
    - ビルド出力ディレクトリ: `dist`
+   - Node.js のバージョンはリポジトリ直下の `.node-version` で指定している
 3. 環境変数（本番）。いずれも「暗号化」を選ぶ
    - `DATABASE_URL`: Neon の本番ブランチの接続文字列
    - `BASIC_AUTH_USER` / `BASIC_AUTH_PASSWORD`: Basic 認証の ID / パスワード
-4. 公開後、次を確認する
+4. 設定 → ランタイム（Runtime）→ Fail open / closed を **Fail closed** にする
+   - Functions の無料枠の上限に達したとき、Fail open のままだと `_middleware.ts`（Basic 認証）を通らずに画面が配信されてしまう
+5. 公開後、次を確認する
+   - 4 の設定が Fail closed になっている
    - 画面を開くと Basic 認証のダイアログが出る（未設定のままだと誰も入れない）
    - 認証なしで `/api/facility-pcs` や `/index.html` にアクセスすると 401 になる
    - `/edit/1` などを直接開いても画面が表示される

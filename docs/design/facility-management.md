@@ -201,7 +201,7 @@ facility-management/
 
 | # | リスク | 対策・判断 |
 |---|---|---|
-| 1 | `_middleware` のBasic認証が静的ファイルにも効くか（不確か） | 公開後にブラウザで確認する |
+| 1 | `_middleware` のBasic認証が静的ファイルにも効くか。Functions の上限到達時に Fail open だと認証なしで配信される | Pages の設定を Fail closed にする。公開後にブラウザで確認する |
 | 2 | wranglerなしのためローカルと本番の実行環境が異なる | Cloudflare依存を `functions/` に隔離。公開後の動作確認を必須にする |
 | 3 | Neonの休止からの復帰で初回表示が遅れる | 許容 |
 | 4 | 同時編集で後勝ち上書き | 許容（利用者2名） |

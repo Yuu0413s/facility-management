@@ -1,5 +1,6 @@
 import { neon } from '@neondatabase/serverless'
 import { Hono } from 'hono'
+import { HTTPException } from 'hono/http-exception'
 import { createFacilityPcRepository, type FacilityPcRepository } from './db/facility-pcs-repository'
 import { createFacilityPcRoutes, type Bindings } from './routes/facility-pcs'
 
@@ -15,6 +16,8 @@ export const createApp = ({ createRepository }: AppDeps) =>
     })
     .route('/facility-pcs', createFacilityPcRoutes(createRepository))
     .onError((error, c) => {
+      // 壊れた JSON など、Hono が意図して返すエラー（400 など）はそのステータスのまま返す
+      if (error instanceof HTTPException) return error.getResponse()
       // Neon のエラーメッセージには接続文字列（DB のパスワード）が含まれることがあるため、
       // レスポンスにもログにもメッセージは出さず、種類と PostgreSQL のエラーコードだけを残す
       console.error('Unhandled error', { name: error.name, code: 'code' in error ? error.code : undefined })

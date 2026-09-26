@@ -1,6 +1,6 @@
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { MemoryRouter, Route, Routes, useLocation } from 'react-router'
+import { MemoryRouter, Route, Routes, useLocation, useNavigate } from 'react-router'
 import type { FacilityPc, FacilityPcPage } from '../../shared/facility-pc-schema'
 import { ApiError, deleteFacilityPc, fetchFacilityPcPage } from '../api/facility-pcs-client'
 import { exportFacilityPcsToExcel } from '../lib/export-excel'
@@ -39,9 +39,15 @@ function EditPageStub() {
   return <p>編集ページ {location.pathname}</p>
 }
 
+function BackButton() {
+  const navigate = useNavigate()
+  return <button onClick={() => navigate(-1)}>ブラウザの戻る</button>
+}
+
 const renderPage = (initialEntry = '/') =>
   render(
     <MemoryRouter initialEntries={[initialEntry]}>
+      <BackButton />
       <Routes>
         <Route path="/" element={<FacilityPcListPage />} />
         <Route path="/new" element={<p>登録ページ</p>} />
@@ -89,6 +95,21 @@ describe('FacilityPcListPage', () => {
     await userEvent.type(await screen.findByRole('searchbox', { name: '施設名で検索' }), '  中央 ')
     await userEvent.click(screen.getByRole('button', { name: '検索' }))
     await waitFor(() => expect(lastQuery()).toEqual({ q: '中央', order: 'asc', page: 1 }))
+  })
+
+  it('ブラウザの「戻る」で検索条件が戻ったら、検索欄の文字も戻す', async () => {
+    renderPage('/?q=' + encodeURIComponent('中央'))
+    const searchbox = await screen.findByRole('searchbox', { name: '施設名で検索' })
+    expect(searchbox).toHaveValue('中央')
+
+    await userEvent.clear(searchbox)
+    await userEvent.type(searchbox, '東')
+    await userEvent.click(screen.getByRole('button', { name: '検索' }))
+    await waitFor(() => expect(lastQuery()).toMatchObject({ q: '東' }))
+
+    await userEvent.click(screen.getByRole('button', { name: 'ブラウザの戻る' }))
+    await waitFor(() => expect(lastQuery()).toMatchObject({ q: '中央' }))
+    expect(screen.getByRole('searchbox', { name: '施設名で検索' })).toHaveValue('中央')
   })
 
   it('次のページへ移動できる', async () => {

@@ -149,6 +149,17 @@ describe('POST /api/facility-pcs', () => {
     consoleError.mockRestore()
   })
 
+  it('壊れた JSON は 500 ではなく 400 にする', async () => {
+    const { repository, request } = setup()
+    const res = await request('/api/facility-pcs', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: '{',
+    })
+    expect(res.status).toBe(400)
+    expect(repository.create).not.toHaveBeenCalled()
+  })
+
   it('JSON 以外で送られた登録は 400 にする（別サイトのフォームからの送信を防ぐ）', async () => {
     const { repository, request } = setup()
     const res = await request('/api/facility-pcs', {

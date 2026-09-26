@@ -42,22 +42,29 @@ export function FacilityPcListPage() {
     // 前の条件の表を残すと、失敗時に別の条件のデータを編集・削除できてしまうため、一度消す
     setResult(null)
     fetchFacilityPcPage({ q, order, page })
-      .then((data) => !isCancelled && setResult(data))
+      .then((data) => {
+        if (isCancelled) return
+        // 最終ページの最後の1件を削除したときなど、範囲外のページにいたら最終ページへ移る。
+        // 前の条件の結果と取り違えないよう、この取得の結果だけで判定する
+        const lastPage = Math.max(1, Math.ceil(data.total / data.perPage))
+        if (data.page > lastPage) {
+          setSearchParams(toSearchParams({ q, order, page: lastPage }), { replace: true })
+          return
+        }
+        setResult(data)
+      })
       .catch((e: unknown) => !isCancelled && setError(errorMessage(e)))
     return () => {
       isCancelled = true
     }
-  }, [q, order, page, reloadCount])
+  }, [q, order, page, reloadCount, setSearchParams])
+
+  // ブラウザの「戻る・進む」で URL の検索語が変わったら、検索欄の文字もそれに合わせる
+  useEffect(() => {
+    setKeyword(q ?? '')
+  }, [q])
 
   const updateQuery = (next: Partial<ListQuery>) => setSearchParams(toSearchParams({ ...query, ...next }))
-
-  // 最終ページの最後の1件を削除したときなど、データがあるのに範囲外のページにいる場合は最終ページへ移る
-  const lastPage = result ? Math.max(1, Math.ceil(result.total / result.perPage)) : null
-  useEffect(() => {
-    if (lastPage !== null && page > lastPage) {
-      setSearchParams(toSearchParams({ q, order, page: lastPage }), { replace: true })
-    }
-  }, [lastPage, page, q, order, setSearchParams])
 
   const handleSearch = (event: FormEvent) => {
     event.preventDefault()

@@ -36,7 +36,13 @@ const pageOf = (items: FacilityPc[], overrides: Partial<FacilityPcPage> = {}): F
 
 function EditPageStub() {
   const location = useLocation()
-  return <p>編集ページ {location.pathname}</p>
+  const state = location.state as { returnTo?: string } | null
+  return (
+    <>
+      <p>編集ページ {location.pathname}</p>
+      <p>戻り先 {state?.returnTo}</p>
+    </>
+  )
 }
 
 function BackButton() {
@@ -161,10 +167,13 @@ describe('FacilityPcListPage', () => {
     expect(deleteFacilityPc).not.toHaveBeenCalled()
   })
 
-  it('編集リンクは今の検索条件を引き継いで編集ページへ移動する', async () => {
-    renderPage('/?order=desc&page=2')
+  it('編集リンクは今の検索・並べ替え・ページの条件を引き継いで編集ページへ移動する', async () => {
+    const listUrl = `/?q=${encodeURIComponent('中央')}&sort=pcName&order=desc&page=2`
+    vi.mocked(fetchFacilityPcPage).mockResolvedValue(pageOf([pc], { total: 120, page: 2 }))
+    renderPage(listUrl)
     await userEvent.click(await screen.findByRole('link', { name: '編集' }))
     expect(screen.getByText('編集ページ /edit/7')).toBeInTheDocument()
+    expect(screen.getByText(`戻り先 ${listUrl}`)).toBeInTheDocument()
   })
 
   it('新規登録ページへ移動できる', async () => {

@@ -42,19 +42,26 @@ describe('GET /api/facility-pcs', () => {
     const page = { items: [saved], total: 1, page: 2, perPage: 50 }
     repository.list.mockResolvedValue(page)
 
-    const res = await request(`/api/facility-pcs?q=${encodeURIComponent(' 中央 ')}&order=desc&page=2`)
+    const res = await request(`/api/facility-pcs?q=${encodeURIComponent(' 中央 ')}&sort=pcName&order=desc&page=2`)
 
     expect(res.status).toBe(200)
     expect(await res.json()).toEqual(page)
-    expect(repository.list).toHaveBeenCalledWith({ q: '中央', order: 'desc', page: 2 })
+    expect(repository.list).toHaveBeenCalledWith({ q: '中央', sort: 'pcName', order: 'desc', page: 2 })
     expect(createRepository).toHaveBeenCalledWith('postgres://example')
   })
 
-  it('省略時は order=asc, page=1', async () => {
+  it('省略時は sort=facilityName, order=asc, page=1', async () => {
     const { repository, request } = setup()
     repository.list.mockResolvedValue({ items: [], total: 0, page: 1, perPage: 50 })
     await request('/api/facility-pcs')
-    expect(repository.list).toHaveBeenCalledWith({ q: undefined, order: 'asc', page: 1 })
+    expect(repository.list).toHaveBeenCalledWith({ q: undefined, sort: 'facilityName', order: 'asc', page: 1 })
+  })
+
+  it('施設名・PC名以外での並べ替えは 400', async () => {
+    const { repository, request } = setup()
+    const res = await request('/api/facility-pcs?sort=password')
+    expect(res.status).toBe(400)
+    expect(repository.list).not.toHaveBeenCalled()
   })
 
   it('不正なページ番号は 400', async () => {

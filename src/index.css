@@ -303,3 +303,8 @@ td.empty {
 .export-menu-options button:focus-visible {
   background: var(--color-bg);
 }
+
+.sort-indicator.inactive {
+  color: var(--color-muted);
+  opacity: 0.6;
+}

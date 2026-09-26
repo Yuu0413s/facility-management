@@ -80,12 +80,17 @@ describe('facilityPcInputSchema', () => {
 })
 
 describe('listQuerySchema', () => {
-  it('省略時は order=asc, page=1, q=undefined', () => {
-    expect(listQuerySchema.parse({})).toEqual({ order: 'asc', page: 1, q: undefined })
+  it('省略時は sort=facilityName, order=asc, page=1, q=undefined', () => {
+    expect(listQuerySchema.parse({})).toEqual({ sort: 'facilityName', order: 'asc', page: 1, q: undefined })
   })
 
   it('文字列のページ番号を数値に変換する', () => {
-    expect(listQuerySchema.parse({ page: '3', order: 'desc', q: ' 中央 ' })).toEqual({ page: 3, order: 'desc', q: '中央' })
+    expect(listQuerySchema.parse({ page: '3', sort: 'pcName', order: 'desc', q: ' 中央 ' })).toEqual({
+      page: 3,
+      sort: 'pcName',
+      order: 'desc',
+      q: '中央',
+    })
   })
 
   it('空白だけの検索語は undefined として扱う', () => {
@@ -94,6 +99,11 @@ describe('listQuerySchema', () => {
 
   it.each(['0', '-1', '1.5', 'abc'])('page=%s を弾く', (page) => {
     expect(listQuerySchema.safeParse({ page }).success).toBe(false)
+  })
+
+  it('sort は施設名・PC名以外を弾く（列名を SQL に埋め込むため）', () => {
+    expect(listQuerySchema.safeParse({ sort: 'password' }).success).toBe(false)
+    expect(listQuerySchema.safeParse({ sort: 'pc_name; DROP TABLE facility_pcs' }).success).toBe(false)
   })
 
   it('order は asc/desc 以外を弾く', () => {

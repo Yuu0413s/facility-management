@@ -4,6 +4,8 @@ export const OFFICE_TYPES = ['Personal', 'H&B', 'Pro', 'Access'] as const
 export const OFFICE_VERSIONS = ['2010', '2013', '2016', '2019', '2021', '2024'] as const
 export const REMARKS_MAX_LENGTH = 500
 export const PER_PAGE = 50
+// 並べ替えできる列。SQL の列名に対応づけるので、ここに無い値は受け付けない
+export const SORT_KEYS = ['facilityName', 'pcName'] as const
 
 const requiredText = z.string('入力してください').trim().min(1, '入力してください')
 
@@ -48,12 +50,14 @@ export const listQuerySchema = z.object({
     .trim()
     .optional()
     .transform((value) => value || undefined),
+  sort: z.enum(SORT_KEYS).default('facilityName'),
   order: z.enum(['asc', 'desc']).default('asc'),
   page: z.coerce.number().int().min(1).default(1),
 })
 
 export type FacilityPcInput = z.infer<typeof facilityPcInputSchema>
+export type SortKey = (typeof SORT_KEYS)[number]
 export type SortOrder = z.infer<typeof listQuerySchema>['order']
-export type ListQuery = { q?: string; order: SortOrder; page: number }
+export type ListQuery = { q?: string; sort: SortKey; order: SortOrder; page: number }
 export type FacilityPc = FacilityPcInput & { id: number }
 export type FacilityPcPage = { items: FacilityPc[]; total: number; page: number; perPage: number }

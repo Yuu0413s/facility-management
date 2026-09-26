@@ -4,6 +4,10 @@ describe('toDisplayDate', () => {
   it('yyyy-mm-dd を yyyy/mm/dd にする', () => {
     expect(toDisplayDate('2026-09-26')).toBe('2026/09/26')
   })
+
+  it('空欄（null）は空文字にする', () => {
+    expect(toDisplayDate(null)).toBe('')
+  })
 })
 
 describe('toIsoDate', () => {

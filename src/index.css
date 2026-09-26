@@ -218,22 +218,6 @@ td.empty {
   font-weight: 600;
 }
 
-.badge {
-  font-size: 0.75rem;
-  font-weight: normal;
-  padding: 0 6px;
-  border-radius: 4px;
-}
-
-.badge.required {
-  background: #fdecea;
-  color: var(--color-required);
-}
-
-.badge.optional {
-  background: var(--color-bg);
-  color: var(--color-muted);
-}
 
 .field-error {
   margin: 0;

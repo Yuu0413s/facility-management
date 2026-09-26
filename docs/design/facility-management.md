@@ -21,11 +21,11 @@
 
 | 機能 | 仕様 |
 |---|---|
-| 登録 | 11項目を入力して登録 |
+| 登録 | 10項目を入力して登録。全項目が任意（何か1項目は必要） |
 | 一覧表示 | 表形式。PCのみ対応（収まらない場合は横スクロール） |
 | 編集 | 登録済みデータの修正 |
 | 削除 | 確認ダイアログあり |
-| ソート | 施設名・PC名。列見出しクリックで昇順／降順を切り替え（別の列を押すとその列の昇順から）。並び順は文字コード順（五十音順ではない）。同じ値どうしは、施設名順ならPC名の昇順、PC名順なら施設名の昇順 |
+| ソート | 施設名・PC名。列見出しクリックで昇順／降順を切り替え（別の列を押すとその列の昇順から）。並び順は文字コード順（五十音順ではない）。空欄は昇順・降順どちらでも最後。同じ値どうしは、施設名順ならPC名の昇順、PC名順なら施設名の昇順 |
 | 検索 | 施設名の部分一致。検索語を変えたら1ページ目に戻る |
 | ページ分割 | 1ページ50件 |
 | パスワード・Keyの表示 | 「●●●●」で隠し、クリックで表示 |
@@ -61,15 +61,15 @@
 ```sql
 CREATE TABLE facility_pcs (
   id              INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-  facility_name   TEXT NOT NULL,
-  pc_name         TEXT NOT NULL,
-  installed_on    DATE NOT NULL,
-  os_version      TEXT NOT NULL,
-  office_type     TEXT NOT NULL CHECK (office_type IN ('Personal','H&B','Pro','Access')),
-  office_version  TEXT NOT NULL CHECK (office_version IN ('2010','2013','2016','2019','2021','2024')),
-  license_key     TEXT NOT NULL,
-  account         TEXT NOT NULL,
-  password        TEXT NOT NULL,
+  facility_name   TEXT,
+  pc_name         TEXT,
+  installed_on    DATE,
+  os_version      TEXT,
+  office_type     TEXT CHECK (office_type IN ('Personal','H&B','Pro','Access')),
+  office_version  TEXT CHECK (office_version IN ('2010','2013','2016','2019','2021','2024')),
+  license_key     TEXT,
+  account         TEXT,
+  password        TEXT,
   remarks         TEXT CHECK (char_length(remarks) <= 500),
   created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -81,13 +81,13 @@ CREATE TABLE facility_pcs (
 |---|---|
 | テーブル構成 | 1テーブルのみ。リレーションなし |
 | ID | 連番 |
-| 必須項目 | 備考以外すべて |
-| 重複 | 「施設名＋PC名」の組み合わせの重複を禁止 |
+| 必須項目 | なし（全項目が任意）。ただし全項目が空欄の登録は不可（アプリ側でチェック）。空欄は NULL で保存 |
+| 重複 | 「施設名＋PC名」の組み合わせの重複を禁止。どちらかが空欄（NULL）の行は対象外 |
 | 空白 | 保存前に前後の空白を除去（重複判定をすり抜けないため） |
 | 備考 | 複数行可、500文字以内 |
 | パスワード | 平文で保存 |
 | 登録・更新日時 | DBに記録する（画面には表示しない）。`updated_at` は UPDATE 文で `now()` を設定 |
-| マイグレーション | ツールは使わない。`db/schema.sql` を Neon の SQL Editor で実行 |
+| マイグレーション | ツールは使わない。新規環境は `db/schema.sql`、既存環境は `db/migrations/` を番号順に Neon の SQL Editor で実行（アプリのデプロイより先に） |
 
 ## 7. API設計
 

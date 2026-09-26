@@ -16,6 +16,7 @@ const rows: FacilityPc[] = [
     remarks: '1行目\n2行目',
   },
   { id: 2, facilityName: '東病院', pcName: 'PC-002', installedOn: '2025-01-05', osVersion: 'Windows 10', officeType: 'Pro', officeVersion: '2016', licenseKey: 'KEY-2', account: 'user2', password: 'pw', remarks: null },
+  { id: 3, facilityName: '西病院', pcName: null, installedOn: null, osVersion: null, officeType: null, officeVersion: null, licenseKey: null, account: null, password: null, remarks: null },
 ]
 
 describe('buildFacilityPcWorkbook', () => {
@@ -27,7 +28,9 @@ describe('buildFacilityPcWorkbook', () => {
     expect(values(1)).toEqual(['施設名', 'PC名', '設置日', 'OSバージョン', 'Office種類', 'Officeバージョン', 'Key', 'アカウント', 'パスワード', '備考'])
     expect(values(2)).toEqual(['中央病院', 'PC-001', '2026/09/26', 'Windows 11', 'H&B', '2021', 'KEY-1', 'user1', 'secret', '1行目\n2行目'])
     expect(values(3)).toEqual(['東病院', 'PC-002', '2025/01/05', 'Windows 10', 'Pro', '2016', 'KEY-2', 'user2', 'pw', ''])
-    expect(sheet.rowCount).toBe(3)
+    // 空欄の項目は空のセルにする
+    expect(values(4)).toEqual(['西病院', '', '', '', '', '', '', '', '', ''])
+    expect(sheet.rowCount).toBe(4)
   })
 })
 
@@ -41,7 +44,8 @@ describe('buildFacilityPcWorkbook（アカウント情報）', () => {
     expect(values(1)).toEqual(['PC名', 'アカウント', 'パスワード'])
     expect(values(2)).toEqual(['PC-001', 'user1', 'secret'])
     expect(values(3)).toEqual(['PC-002', 'user2', 'pw'])
-    expect(sheet.rowCount).toBe(3)
+    expect(values(4)).toEqual(['', '', ''])
+    expect(sheet.rowCount).toBe(4)
     expect(sheet.columnCount).toBe(3)
   })
 })

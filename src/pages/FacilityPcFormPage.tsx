@@ -29,10 +29,10 @@ const EMPTY_VALUES: FormValues = {
   remarks: '',
 }
 
+// 空欄（null）の項目は、空の入力欄として表示する
 const toFormValues = ({ id: _, ...pc }: FacilityPc): FormValues => ({
-  ...pc,
+  ...(Object.fromEntries(Object.entries(pc).map(([field, value]) => [field, value ?? ''])) as FormValues),
   installedOn: toDisplayDate(pc.installedOn),
-  remarks: pc.remarks ?? '',
 })
 
 const errorMessage = (error: unknown) => (error instanceof Error ? error.message : '予期しないエラーが発生しました')
@@ -76,7 +76,10 @@ export function FacilityPcFormPage() {
     // サーバーと同じ Zod スキーマで先に確認し、明らかな入力ミスは通信せずに知らせる
     const parsed = facilityPcInputSchema.safeParse({ ...values, installedOn: toIsoDate(values.installedOn) })
     if (!parsed.success) {
-      setFieldErrors(z.flattenError(parsed.error).fieldErrors)
+      const { formErrors, fieldErrors } = z.flattenError(parsed.error)
+      setFieldErrors(fieldErrors)
+      // 「いずれかの項目を入力してください」は特定の項目に属さないので、フォームの上に出す
+      setFormError(formErrors[0] ?? null)
       return
     }
     setFieldErrors({})
@@ -201,7 +204,7 @@ export function FacilityPcFormPage() {
         {textField('account')}
         {textField('password')}
 
-        <FormField field="remarks" errors={fieldErrors.remarks} optional>
+        <FormField field="remarks" errors={fieldErrors.remarks}>
           {(props) => (
             <>
               <textarea
@@ -233,12 +236,10 @@ type ControlProps = { id: string; 'aria-invalid': boolean; 'aria-describedby'?: 
 function FormField({
   field,
   errors,
-  optional = false,
   children,
 }: {
   field: Field
   errors?: string[]
-  optional?: boolean
   children: (props: ControlProps) => ReactNode
 }) {
   const controlId = `field-${field}`
@@ -249,7 +250,6 @@ function FormField({
     <div className="form-field">
       <div className="field-label">
         <label htmlFor={controlId}>{LABELS[field]}</label>
-        <span className={optional ? 'badge optional' : 'badge required'}>{optional ? '任意' : '必須'}</span>
       </div>
       {children({ id: controlId, 'aria-invalid': hasError, 'aria-describedby': hasError ? errorId : undefined })}
       {hasError && (

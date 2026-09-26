@@ -1,4 +1,4 @@
-export const toDisplayDate = (isoDate: string) => isoDate.replaceAll('-', '/')
+export const toDisplayDate = (isoDate: string | null) => (isoDate ? isoDate.replaceAll('-', '/') : '')
 
 // yyyy/m/d も受け付けて yyyy-mm-dd に揃える。形式外の値は変換せず、エラー判定は Zod スキーマに任せる
 export const toIsoDate = (displayDate: string) => {

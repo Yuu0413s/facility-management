@@ -26,7 +26,9 @@ export const buildFacilityPcWorkbook = async (rows: FacilityPc[], kind: ExportKi
   sheet.getRow(1).font = { bold: true }
 
   for (const row of rows) {
-    sheet.addRow({ ...row, installedOn: toDisplayDate(row.installedOn), remarks: row.remarks ?? '' })
+    // 空欄（null）の項目は空のセルにする
+    const cells = Object.fromEntries(fields.map((field) => [field, row[field] ?? '']))
+    sheet.addRow({ ...cells, installedOn: toDisplayDate(row.installedOn) })
   }
   if (fields.includes('remarks')) {
     sheet.getColumn('remarks').alignment = { wrapText: true, vertical: 'top' }

@@ -79,7 +79,8 @@ export function FacilityPcListPage() {
   }
 
   const handleDelete = async (pc: FacilityPc) => {
-    if (!window.confirm(`「${pc.facilityName} / ${pc.pcName}」を削除します。よろしいですか？`)) return
+    const orBlank = (value: string | null) => value ?? '（未入力）'
+    if (!window.confirm(`「${orBlank(pc.facilityName)} / ${orBlank(pc.pcName)}」を削除します。よろしいですか？`)) return
     try {
       await deleteFacilityPc(pc.id)
       setReloadCount((count) => count + 1)
@@ -168,11 +169,11 @@ export function FacilityPcListPage() {
                       <td>{pc.officeType}</td>
                       <td>{pc.officeVersion}</td>
                       <td>
-                        <SecretCell value={pc.licenseKey} label={LABELS.licenseKey} />
+                        {pc.licenseKey && <SecretCell value={pc.licenseKey} label={LABELS.licenseKey} />}
                       </td>
                       <td>{pc.account}</td>
                       <td>
-                        <SecretCell value={pc.password} label={LABELS.password} />
+                        {pc.password && <SecretCell value={pc.password} label={LABELS.password} />}
                       </td>
                       <td className="remarks">{pc.remarks}</td>
                       <td className="row-actions">

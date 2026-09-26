@@ -45,7 +45,8 @@ const COLUMNS = `
 `
 
 // 並べ替えの列名はプレースホルダにできないため、許可済みの対応表からだけ組み立てる。
-// 2列目は同じ値が並んだときの順番（施設名順なら PC名、PC名順なら施設名）
+// 2列目は同じ値が並んだときの順番（施設名順なら PC名、PC名順なら施設名）。
+// 空欄（NULL）は昇順・降順どちらでも最後に並べる（PostgreSQL の既定では降順で先頭になるため NULLS LAST を明示）
 const SORT_COLUMNS: Record<SortKey, [primary: string, secondary: string]> = {
   facilityName: ['facility_name', 'pc_name'],
   pcName: ['pc_name', 'facility_name'],
@@ -75,7 +76,7 @@ export const createFacilityPcRepository = (sql: Sql): FacilityPcRepository => ({
       [
         sql.query(
           `SELECT ${COLUMNS} FROM facility_pcs ${where}
-           ORDER BY ${primary} COLLATE "C" ${direction}, ${secondary} COLLATE "C" ASC, id ASC
+           ORDER BY ${primary} COLLATE "C" ${direction} NULLS LAST, ${secondary} COLLATE "C" ASC NULLS LAST, id ASC
            LIMIT $2 OFFSET $3`,
           [pattern, PER_PAGE, (page - 1) * PER_PAGE],
         ),
@@ -88,7 +89,7 @@ export const createFacilityPcRepository = (sql: Sql): FacilityPcRepository => ({
   },
 
   async listAll() {
-    const rows = await sql.query(`SELECT ${COLUMNS} FROM facility_pcs ORDER BY facility_name COLLATE "C" ASC, pc_name COLLATE "C" ASC, id ASC`)
+    const rows = await sql.query(`SELECT ${COLUMNS} FROM facility_pcs ORDER BY facility_name COLLATE "C" ASC NULLS LAST, pc_name COLLATE "C" ASC NULLS LAST, id ASC`)
     return rows as FacilityPc[]
   },
 

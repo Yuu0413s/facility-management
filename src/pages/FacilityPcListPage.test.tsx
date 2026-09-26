@@ -149,6 +149,36 @@ describe('FacilityPcListPage', () => {
     await waitFor(() => expect(lastQuery()).toMatchObject({ page: 2 }))
   })
 
+  it('空欄の項目は何も表示せず、Keyとパスワードが空欄なら伏せ字も表示ボタンも出さない', async () => {
+    const blank: FacilityPc = {
+      id: 8,
+      facilityName: '西病院',
+      pcName: null,
+      installedOn: null,
+      osVersion: null,
+      officeType: null,
+      officeVersion: null,
+      licenseKey: null,
+      account: null,
+      password: null,
+      remarks: null,
+    }
+    vi.mocked(fetchFacilityPcPage).mockResolvedValue(pageOf([blank]))
+    renderPage()
+    const row = await screen.findByRole('row', { name: /西病院/ })
+    expect(within(row).queryByText('●●●●')).not.toBeInTheDocument()
+    expect(within(row).queryByRole('button', { name: /を表示/ })).not.toBeInTheDocument()
+    expect(within(row).queryByText('null')).not.toBeInTheDocument()
+  })
+
+  it('削除の確認では、空欄の施設名・PC名を「（未入力）」と表示する', async () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(false)
+    vi.mocked(fetchFacilityPcPage).mockResolvedValue(pageOf([{ ...pc, pcName: null }]))
+    renderPage()
+    await userEvent.click(await screen.findByRole('button', { name: '削除' }))
+    expect(window.confirm).toHaveBeenCalledWith('「中央病院 / （未入力）」を削除します。よろしいですか？')
+  })
+
   it('確認ダイアログで OK したら削除し、一覧を取得し直す', async () => {
     vi.spyOn(window, 'confirm').mockReturnValue(true)
     vi.mocked(deleteFacilityPc).mockResolvedValue()

@@ -78,13 +78,40 @@ describe('FacilityPcFormPage（新規登録）', () => {
     expect(options('Officeバージョン')).toEqual(['', '2010', '2013', '2016', '2019', '2021', '2024'])
   })
 
-  it('未入力のまま送信すると、API を呼ばずに項目ごとのエラーを表示する', async () => {
+  it('全項目が空欄のまま送信すると、API を呼ばずにフォームの上にエラーを表示する', async () => {
     renderPage('/new')
     await userEvent.click(screen.getByRole('button', { name: '登録する' }))
     expect(createFacilityPc).not.toHaveBeenCalled()
-    expect(screen.getByLabelText('施設名')).toHaveAccessibleDescription('入力してください')
-    expect(screen.getByLabelText('Office種類')).toHaveAccessibleDescription('選択してください')
-    expect(screen.getByLabelText('備考')).not.toHaveAttribute('aria-invalid', 'true')
+    expect(screen.getByRole('alert')).toHaveTextContent('いずれかの項目を入力してください')
+    expect(screen.getByLabelText('施設名')).not.toHaveAttribute('aria-invalid', 'true')
+  })
+
+  it('施設名とPC名だけで登録でき、空欄の項目は null で送る', async () => {
+    vi.mocked(createFacilityPc).mockResolvedValue(saved)
+    renderPage('/new')
+    const user = userEvent.setup()
+    await user.type(screen.getByLabelText('施設名'), '中央病院')
+    await user.type(screen.getByLabelText('PC名'), 'PC-001')
+    await user.click(screen.getByRole('button', { name: '登録する' }))
+
+    expect(createFacilityPc).toHaveBeenCalledWith({
+      facilityName: '中央病院',
+      pcName: 'PC-001',
+      installedOn: null,
+      osVersion: null,
+      officeType: null,
+      officeVersion: null,
+      licenseKey: null,
+      account: null,
+      password: null,
+      remarks: null,
+    })
+  })
+
+  it('必須・任意のバッジを表示しない（全項目が任意のため）', () => {
+    renderPage('/new')
+    expect(screen.queryByText('必須')).not.toBeInTheDocument()
+    expect(screen.queryByText('任意')).not.toBeInTheDocument()
   })
 
   it('存在しない日付はエラーにする', async () => {
@@ -146,6 +173,22 @@ describe('FacilityPcFormPage（編集）', () => {
     const { id: _, ...input } = saved
     expect(updateFacilityPc).toHaveBeenCalledWith(7, { ...input, osVersion: 'Windows 11 24H2' })
     expect(await screen.findByText(/一覧ページ/)).toBeInTheDocument()
+  })
+
+  it('空欄の項目がある既存データは、空の入力欄として表示する', async () => {
+    vi.mocked(fetchFacilityPc).mockResolvedValue({
+      ...saved,
+      installedOn: null,
+      officeType: null,
+      licenseKey: null,
+      remarks: null,
+    })
+    renderPage('/edit/7')
+    expect(await screen.findByDisplayValue('中央病院')).toBeInTheDocument()
+    expect(screen.getByLabelText('設置日')).toHaveValue('')
+    expect(screen.getByLabelText('Office種類')).toHaveValue('')
+    expect(screen.getByLabelText('Key')).toHaveValue('')
+    expect(screen.getByLabelText('備考')).toHaveValue('')
   })
 
   it('データが見つからなければメッセージを表示する', async () => {

@@ -29,7 +29,9 @@ npm test
 
 ## DB の準備
 
-Neon の SQL Editor で [db/schema.sql](db/schema.sql) を1回実行する。
+- 新しく環境を作るとき: Neon の SQL Editor で [db/schema.sql](db/schema.sql) を1回実行する
+- 既存の環境を更新するとき: [db/migrations/](db/migrations/) の SQL を番号順に、本番・dev・test の各ブランチで実行する
+  - **アプリをデプロイ（PR をマージ）する前に実行すること**。先にアプリを更新すると、DB の制約に弾かれてエラーになる
 
 ## Cloudflare Pages への公開
 

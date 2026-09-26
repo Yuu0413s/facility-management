@@ -56,6 +56,56 @@ describe.skipIf(!databaseUrl)('facilityPcRepository（Neon テスト用ブラン
     })
   })
 
+  describe('空欄（NULL）の扱い', () => {
+    const onlyNames = (facilityName: string | null, pcName: string | null): FacilityPcInput => ({
+      facilityName,
+      pcName,
+      installedOn: null,
+      osVersion: null,
+      officeType: null,
+      officeVersion: null,
+      licenseKey: null,
+      account: null,
+      password: null,
+      remarks: null,
+    })
+
+    it('空欄の項目は null のまま保存・取得できる', async () => {
+      const created = await repository.create(onlyNames('中央病院', 'PC-001'))
+      expect(await repository.findById(created.id)).toEqual({ ...onlyNames('中央病院', 'PC-001'), id: created.id })
+    })
+
+    it('施設名かPC名が空欄の行は、重複チェックの対象外になる', async () => {
+      await repository.create(onlyNames('中央病院', null))
+      await expect(repository.create(onlyNames('中央病院', null))).resolves.toBeDefined()
+      await repository.create(onlyNames(null, 'PC-001'))
+      await expect(repository.create(onlyNames(null, 'PC-001'))).resolves.toBeDefined()
+    })
+
+    it.each(['asc', 'desc'] as const)('施設名で並べ替えると、施設名が空欄の行は %s でも最後', async (order) => {
+      await repository.create(onlyNames(null, 'PC-0'))
+      await repository.create(onlyNames('B病院', 'PC-1'))
+      await repository.create(onlyNames('A病院', 'PC-2'))
+      const result = await repository.list({ sort: 'facilityName', order, page: 1 })
+      expect(result.items.map((item) => item.facilityName).at(-1)).toBeNull()
+    })
+
+    it.each(['asc', 'desc'] as const)('PC名で並べ替えると、PC名が空欄の行は %s でも最後', async (order) => {
+      await repository.create(onlyNames('A病院', null))
+      await repository.create(onlyNames('B病院', 'PC-1'))
+      await repository.create(onlyNames('C病院', 'PC-2'))
+      const result = await repository.list({ sort: 'pcName', order, page: 1 })
+      expect(result.items.map((item) => item.pcName).at(-1)).toBeNull()
+    })
+
+    it('同じ施設の中では、PC名が空欄の行が最後', async () => {
+      await repository.create(onlyNames('A病院', null))
+      await repository.create(onlyNames('A病院', 'PC-1'))
+      const result = await repository.list({ sort: 'facilityName', order: 'asc', page: 1 })
+      expect(result.items.map((item) => item.pcName)).toEqual(['PC-1', null])
+    })
+  })
+
   describe('update', () => {
     it('内容を更新し、updated_at を進める', async () => {
       const created = await repository.create(baseInput)

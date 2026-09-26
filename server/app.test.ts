@@ -126,10 +126,18 @@ describe('POST /api/facility-pcs', () => {
 
   it('入力エラーは 400 で項目ごとのメッセージを返す', async () => {
     const { repository, send } = setup()
-    const res = await send('POST', '/api/facility-pcs', { ...input, pcName: '' })
+    const res = await send('POST', '/api/facility-pcs', { ...input, installedOn: '2026-02-30' })
     expect(res.status).toBe(400)
     const body = (await res.json()) as { fieldErrors: Record<string, string[]> }
-    expect(body.fieldErrors.pcName).toEqual(['入力してください'])
+    expect(body.fieldErrors.installedOn).toEqual(['存在しない日付です'])
+    expect(repository.create).not.toHaveBeenCalled()
+  })
+
+  it('全項目が空欄なら 400 で、項目に属さないエラーをメッセージとして返す', async () => {
+    const { repository, send } = setup()
+    const res = await send('POST', '/api/facility-pcs', { facilityName: '  ' })
+    expect(res.status).toBe(400)
+    expect(((await res.json()) as { message: string }).message).toBe('いずれかの項目を入力してください')
     expect(repository.create).not.toHaveBeenCalled()
   })
 

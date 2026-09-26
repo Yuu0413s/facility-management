@@ -1,6 +1,6 @@
-import type { FacilityPc } from '../../shared/facility-pc-schema'
+import type { FacilityPcInput } from '../../shared/facility-pc-schema'
 
-type DisplayField = Exclude<keyof FacilityPc, 'id'>
+type DisplayField = keyof FacilityPcInput
 
 // 一覧表・入力フォーム・Excel で同じ順番・同じ表記を使う
 export const FACILITY_PC_LABELS = {
@@ -13,7 +13,7 @@ export const FACILITY_PC_LABELS = {
   licenseKey: 'Key',
   account: 'アカウント',
   password: 'パスワード',
-  registeredOn: '登録日',
+  registeredOn: 'アカウント登録日',
   remarks: '備考',
 } as const satisfies Record<DisplayField, string>
 

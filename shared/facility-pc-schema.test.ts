@@ -10,6 +10,7 @@ const validInput = {
   licenseKey: 'XXXXX-XXXXX-XXXXX-XXXXX-XXXXX',
   account: 'user@example.com',
   password: 'p@ss word',
+  registeredOn: '2026-04-01',
   remarks: '1行目\n2行目',
 }
 
@@ -35,6 +36,7 @@ describe('facilityPcInputSchema', () => {
     'licenseKey',
     'account',
     'password',
+    'registeredOn',
   ] as const)('%s は任意入力で、空白だけなら null として受け付ける', (field) => {
     const result = facilityPcInputSchema.safeParse({ ...validInput, [field]: '   ' })
     expect(result.success).toBe(true)
@@ -52,6 +54,7 @@ describe('facilityPcInputSchema', () => {
       licenseKey: null,
       account: null,
       password: null,
+      registeredOn: null,
       remarks: null,
     })
   })
@@ -124,6 +127,14 @@ describe('facilityPcInputSchema', () => {
     expect(result.error?.issues.map((issue) => issue.message)).toEqual(['yyyymmdd（8桁の数字）で入力してください'])
   })
 
+  it.each(['2026/04/01', '2026-02-30', '0000-01-01'])('アカウント登録日も設置日と同じく %s を弾く', (registeredOn) => {
+    expect(facilityPcInputSchema.safeParse({ ...validInput, registeredOn }).success).toBe(false)
+  })
+
+  it('アカウント登録日だけでも登録できる', () => {
+    expect(facilityPcInputSchema.safeParse({ registeredOn: '2026-04-01' }).success).toBe(true)
+  })
+
   it('うるう日を受け付ける', () => {
     expect(facilityPcInputSchema.safeParse({ ...validInput, installedOn: '2024-02-29' }).success).toBe(true)
   })
@@ -151,7 +162,7 @@ describe('listQuerySchema', () => {
     expect(listQuerySchema.safeParse({ page }).success).toBe(false)
   })
 
-  it.each(['installedOn', 'registeredOn'] as const)('sort=%s（設置日・登録日）を受け付ける', (sort) => {
+  it.each(['installedOn', 'registeredOn'] as const)('sort=%s（設置日・アカウント登録日）を受け付ける', (sort) => {
     expect(listQuerySchema.parse({ sort }).sort).toBe(sort)
   })
 

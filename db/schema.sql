@@ -12,6 +12,7 @@ CREATE TABLE facility_pcs (
   license_key     TEXT,
   account         TEXT,
   password        TEXT,
+  registered_on   DATE,  -- アカウント登録日（手入力）。created_at は DB に登録した日時
   remarks         TEXT CHECK (char_length(remarks) <= 500),
   created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at      TIMESTAMPTZ NOT NULL DEFAULT now(),

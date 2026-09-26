@@ -13,9 +13,10 @@ const input: FacilityPcInput = {
   licenseKey: 'ABCDE12345FGHIJ67890KLMNO',
   account: 'user1',
   password: 'secret',
+  registeredOn: '2026-04-01',
   remarks: null,
 }
-const saved: FacilityPc = { ...input, id: 1, registeredOn: '2026-09-26' }
+const saved: FacilityPc = { ...input, id: 1 }
 
 const env = { DATABASE_URL: 'postgres://example', BASIC_AUTH_USER: 'u', BASIC_AUTH_PASSWORD: 'p' }
 
@@ -138,11 +139,14 @@ describe('POST /api/facility-pcs', () => {
     expect(repository.create).toHaveBeenCalledWith(input)
   })
 
-  it('登録日は送られてきても無視する（DB が自動で記録するため）', async () => {
+  it('アカウント登録日は入力項目として受け付け、存在しない日付なら 400', async () => {
     const { repository, send } = setup()
     repository.create.mockResolvedValue(saved)
-    await send('POST', '/api/facility-pcs', { ...input, registeredOn: '2000-01-01' })
-    expect(repository.create).toHaveBeenCalledWith(input)
+    await send('POST', '/api/facility-pcs', { ...input, registeredOn: '2020-01-15' })
+    expect(repository.create).toHaveBeenCalledWith({ ...input, registeredOn: '2020-01-15' })
+
+    const res = await send('POST', '/api/facility-pcs', { ...input, registeredOn: '2020-02-30' })
+    expect(res.status).toBe(400)
   })
 
   it('入力エラーは 400 で項目ごとのメッセージを返す', async () => {

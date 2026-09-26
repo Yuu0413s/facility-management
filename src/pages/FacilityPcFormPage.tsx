@@ -17,6 +17,9 @@ import { FACILITY_PC_LABELS as LABELS } from '../lib/facility-pc-labels'
 type Field = keyof FacilityPcInput
 type FormValues = Record<Field, string>
 
+const DATE_FIELDS = ['installedOn', 'registeredOn'] as const
+type DateField = (typeof DATE_FIELDS)[number]
+
 const EMPTY_VALUES: FormValues = {
   facilityName: '',
   pcName: '',
@@ -27,13 +30,15 @@ const EMPTY_VALUES: FormValues = {
   licenseKey: '',
   account: '',
   password: '',
+  registeredOn: '',
   remarks: '',
 }
 
 // 空欄（null）の項目は、空の入力欄として表示する
-const toFormValues = ({ id: _, registeredOn: __, ...pc }: FacilityPc): FormValues => ({
+const toFormValues = ({ id: _, ...pc }: FacilityPc): FormValues => ({
   ...(Object.fromEntries(Object.entries(pc).map(([field, value]) => [field, value ?? ''])) as FormValues),
   installedOn: toInputDate(pc.installedOn),
+  registeredOn: toInputDate(pc.registeredOn),
 })
 
 const errorMessage = (error: unknown) => (error instanceof Error ? error.message : '予期しないエラーが発生しました')
@@ -54,7 +59,6 @@ export function FacilityPcFormPage() {
   const [loadError, setLoadError] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(isEdit)
   const [isSubmitting, setIsSubmitting] = useState(false)
-  const datePickerRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     if (id === null) return
@@ -75,13 +79,22 @@ export function FacilityPcFormPage() {
     setFormError(null)
 
     // サーバーと同じ Zod スキーマで先に確認し、明らかな入力ミスは通信せずに知らせる
-    const parsed = facilityPcInputSchema.safeParse({ ...values, installedOn: toIsoDate(values.installedOn) })
-    // 入力欄は yyyymmdd だけを受け付ける。スキーマは API 用の yyyy-mm-dd を正しい形とするため、
+    const parsed = facilityPcInputSchema.safeParse({
+      ...values,
+      ...Object.fromEntries(DATE_FIELDS.map((field) => [field, toIsoDate(values[field])])),
+    })
+    // 日付の入力欄は yyyymmdd だけを受け付ける。スキーマは API 用の yyyy-mm-dd を正しい形とするため、
     // 入力欄に yyyy-mm-dd と打たれるとすり抜けてしまう。入力欄の形式はここで確かめる
-    const hasInvalidDateFormat = values.installedOn.trim() !== '' && !isDateInputFormat(values.installedOn)
+    const dateFormatErrors = Object.fromEntries(
+      DATE_FIELDS.filter((field) => values[field].trim() !== '' && !isDateInputFormat(values[field])).map((field) => [
+        field,
+        [DATE_INPUT_FORMAT_MESSAGE],
+      ]),
+    )
+    const hasInvalidDateFormat = Object.keys(dateFormatErrors).length > 0
     if (!parsed.success || hasInvalidDateFormat) {
       const { formErrors, fieldErrors } = parsed.success ? { formErrors: [], fieldErrors: {} } : z.flattenError(parsed.error)
-      setFieldErrors(hasInvalidDateFormat ? { ...fieldErrors, installedOn: [DATE_INPUT_FORMAT_MESSAGE] } : fieldErrors)
+      setFieldErrors({ ...fieldErrors, ...dateFormatErrors })
       // 「いずれかの項目を入力してください」は特定の項目に属さないので、フォームの上に出す
       setFormError(formErrors[0] ?? null)
       return
@@ -99,17 +112,6 @@ export function FacilityPcFormPage() {
       if (e instanceof ApiError) setFieldErrors(e.fieldErrors)
       setFormError(errorMessage(e))
       setIsSubmitting(false)
-    }
-  }
-
-  const openDatePicker = () => {
-    const picker = datePickerRef.current
-    if (!picker) return
-    try {
-      picker.showPicker()
-    } catch {
-      // showPicker 非対応のブラウザでは、日付入力欄にフォーカスして標準の操作に任せる
-      picker.focus()
     }
   }
 
@@ -165,7 +167,19 @@ export function FacilityPcFormPage() {
     </FormField>
   )
 
-  const isoInstalledOn = toIsoDate(values.installedOn)
+
+  const dateField = (field: DateField) => (
+    <FormField field={field} errors={fieldErrors[field]}>
+      {(props) => (
+        <DateInput
+          controlProps={props}
+          label={LABELS[field]}
+          value={values[field]}
+          onChange={(value) => setValue(field, value)}
+        />
+      )}
+    </FormField>
+  )
 
   return (
     <main className="page">
@@ -180,32 +194,7 @@ export function FacilityPcFormPage() {
         {textField('facilityName')}
         {textField('pcName')}
 
-        <FormField field="installedOn" errors={fieldErrors.installedOn}>
-          {(props) => (
-            <div className="date-input">
-              <input
-                {...props}
-                type="text"
-                inputMode="numeric"
-                placeholder="yyyymmdd"
-                value={values.installedOn}
-                onChange={(event) => setValue('installedOn', event.target.value)}
-              />
-              <button type="button" onClick={openDatePicker}>
-                カレンダーを開く
-              </button>
-              <input
-                ref={datePickerRef}
-                type="date"
-                className="date-picker"
-                aria-label="カレンダーから選択"
-                tabIndex={-1}
-                value={/^\d{4}-\d{2}-\d{2}$/.test(isoInstalledOn) ? isoInstalledOn : ''}
-                onChange={(event) => event.target.value && setValue('installedOn', toInputDate(event.target.value))}
-              />
-            </div>
-          )}
-        </FormField>
+        {dateField('installedOn')}
 
         {textField('osVersion')}
         {selectField('officeType', OFFICE_TYPES)}
@@ -213,6 +202,7 @@ export function FacilityPcFormPage() {
         {textField('licenseKey', '英数字25桁（ハイフンなし）')}
         {textField('account')}
         {textField('password')}
+        {dateField('registeredOn')}
 
         <FormField field="remarks" errors={fieldErrors.remarks}>
           {(props) => (
@@ -267,6 +257,58 @@ function FormField({
           {errors![0]}
         </p>
       )}
+    </div>
+  )
+}
+
+// 日付の入力欄。yyyymmdd のテキスト入力と、ブラウザ標準のカレンダーを開くボタンを並べる
+function DateInput({
+  controlProps,
+  label,
+  value,
+  onChange,
+}: {
+  controlProps: ControlProps
+  label: string
+  value: string
+  onChange: (value: string) => void
+}) {
+  const pickerRef = useRef<HTMLInputElement>(null)
+  const isoValue = toIsoDate(value)
+
+  const openPicker = () => {
+    const picker = pickerRef.current
+    if (!picker) return
+    try {
+      picker.showPicker()
+    } catch {
+      // showPicker 非対応のブラウザでは、日付入力欄にフォーカスして標準の操作に任せる
+      picker.focus()
+    }
+  }
+
+  return (
+    <div className="date-input">
+      <input
+        {...controlProps}
+        type="text"
+        inputMode="numeric"
+        placeholder="yyyymmdd"
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+      />
+      <button type="button" aria-label={`${label}のカレンダーを開く`} onClick={openPicker}>
+        カレンダーを開く
+      </button>
+      <input
+        ref={pickerRef}
+        type="date"
+        className="date-picker"
+        aria-label={`${label}をカレンダーから選択`}
+        tabIndex={-1}
+        value={/^\d{4}-\d{2}-\d{2}$/.test(isoValue) ? isoValue : ''}
+        onChange={(event) => event.target.value && onChange(toInputDate(event.target.value))}
+      />
     </div>
   )
 }

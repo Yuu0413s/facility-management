@@ -5,6 +5,7 @@ CREATE TABLE facility_pcs (
   id              INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
   facility_name   TEXT,
   pc_name         TEXT,
+  tag             TEXT,  -- 資産管理用の Tag。重複禁止（大文字・小文字を区別しない。下の UNIQUE INDEX）
   installed_on    DATE,
   os_version      TEXT,
   office_type     TEXT CHECK (office_type IN ('Personal', 'H&B', 'Pro', 'Access')),
@@ -18,3 +19,4 @@ CREATE TABLE facility_pcs (
   updated_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
   UNIQUE (facility_name, pc_name)
 );
+CREATE UNIQUE INDEX facility_pcs_tag_lower_key ON facility_pcs (lower(tag));

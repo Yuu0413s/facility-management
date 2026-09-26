@@ -6,7 +6,7 @@ export const REMARKS_MAX_LENGTH = 500
 export const DATE_INPUT_FORMAT_MESSAGE = 'yyyymmdd（8桁の数字）で入力してください'
 export const PER_PAGE = 50
 // 並べ替えできる列。SQL の列名に対応づけるので、ここに無い値は受け付けない
-export const SORT_KEYS = ['facilityName', 'pcName', 'installedOn', 'registeredOn'] as const
+export const SORT_KEYS = ['facilityName', 'pcName', 'tag', 'installedOn', 'registeredOn'] as const
 
 // 全項目が任意入力。空白だけ・未送信の項目は null として保存する
 const blankToNull = (value: unknown) => (value === undefined || (typeof value === 'string' && value.trim() === '') ? null : value)
@@ -43,6 +43,8 @@ export const facilityPcInputSchema = z
   .object({
     facilityName: optionalText,
     pcName: optionalText,
+    // 資産管理用の Tag（自由入力）。重複の禁止は DB の制約で行う（大文字・小文字を区別しない）
+    tag: optionalText,
     installedOn: optional(isoDate),
     osVersion: optionalText,
     officeType: optional(z.enum(OFFICE_TYPES, '選択肢から選んでください')),

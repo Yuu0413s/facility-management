@@ -12,6 +12,7 @@ import {
 const input: FacilityPcInput = {
   facilityName: '中央病院',
   pcName: 'PC-001',
+  tag: null,
   installedOn: '2026-09-26',
   osVersion: 'Windows 11',
   officeType: 'Pro',

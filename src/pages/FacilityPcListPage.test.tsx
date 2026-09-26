@@ -17,6 +17,7 @@ const pc: FacilityPc = {
   id: 7,
   facilityName: '中央病院',
   pcName: 'PC-001',
+  tag: null,
   installedOn: '2026-09-26',
   osVersion: 'Windows 11',
   officeType: 'H&B',
@@ -95,6 +96,7 @@ describe('FacilityPcListPage', () => {
   })
 
   it.each([
+    ['Tag', 'tag'],
     ['設置日', 'installedOn'],
     ['アカウント登録日', 'registeredOn'],
   ] as const)('%s の見出しを押すとその列の昇順で並べ替え、もう一度押すと降順になる', async (label, sort) => {
@@ -105,6 +107,15 @@ describe('FacilityPcListPage', () => {
     expect(await header()).toHaveAttribute('aria-sort', 'ascending')
     await userEvent.click(within(await header()).getByRole('button'))
     await waitFor(() => expect(lastQuery()).toMatchObject({ sort, order: 'desc' }))
+  })
+
+  it('「Tag」の列を「PC名」の次に表示する', async () => {
+    vi.mocked(fetchFacilityPcPage).mockResolvedValue(pageOf([{ ...pc, tag: 'TAG-0001' }]))
+    renderPage()
+    const row = await screen.findByRole('row', { name: /中央病院/ })
+    expect(within(row).getByText('TAG-0001')).toBeInTheDocument()
+    const headers = screen.getAllByRole('columnheader').map((header) => header.textContent?.replace(/[▲▼↕]/g, '').trim())
+    expect(headers.slice(0, 3)).toEqual(['施設名', 'PC名', 'Tag'])
   })
 
   it('「アカウント登録日」の列を「パスワード」と「備考」の間に表示する', async () => {
@@ -151,14 +162,14 @@ describe('FacilityPcListPage', () => {
 
   it('施設名で検索すると1ページ目から取得し直す', async () => {
     renderPage('/?page=3')
-    await userEvent.type(await screen.findByRole('searchbox', { name: '施設名で検索' }), '  中央 ')
+    await userEvent.type(await screen.findByRole('searchbox', { name: '施設名・Tagで検索' }), '  中央 ')
     await userEvent.click(screen.getByRole('button', { name: '検索' }))
     await waitFor(() => expect(lastQuery()).toEqual({ q: '中央', sort: 'facilityName', order: 'asc', page: 1 }))
   })
 
   it('ブラウザの「戻る」で検索条件が戻ったら、検索欄の文字も戻す', async () => {
     renderPage('/?q=' + encodeURIComponent('中央'))
-    const searchbox = await screen.findByRole('searchbox', { name: '施設名で検索' })
+    const searchbox = await screen.findByRole('searchbox', { name: '施設名・Tagで検索' })
     expect(searchbox).toHaveValue('中央')
 
     await userEvent.clear(searchbox)
@@ -168,7 +179,7 @@ describe('FacilityPcListPage', () => {
 
     await userEvent.click(screen.getByRole('button', { name: 'ブラウザの戻る' }))
     await waitFor(() => expect(lastQuery()).toMatchObject({ q: '中央' }))
-    expect(screen.getByRole('searchbox', { name: '施設名で検索' })).toHaveValue('中央')
+    expect(screen.getByRole('searchbox', { name: '施設名・Tagで検索' })).toHaveValue('中央')
   })
 
   it('次のページへ移動できる', async () => {
@@ -183,6 +194,7 @@ describe('FacilityPcListPage', () => {
       id: 8,
       facilityName: '西病院',
       pcName: null,
+      tag: null,
       installedOn: null,
       osVersion: null,
       officeType: null,

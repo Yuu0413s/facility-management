@@ -118,8 +118,8 @@ export function FacilityPcListPage() {
       <form className="search" role="search" onSubmit={handleSearch}>
         <input
           type="search"
-          aria-label="施設名で検索"
-          placeholder="施設名で検索"
+          aria-label="施設名・Tagで検索"
+          placeholder="施設名・Tagで検索"
           value={keyword}
           onChange={(event) => setKeyword(event.target.value)}
         />
@@ -142,6 +142,7 @@ export function FacilityPcListPage() {
                 <tr>
                   <SortableHeader column="facilityName" sort={sort} order={order} onSort={updateQuery} />
                   <SortableHeader column="pcName" sort={sort} order={order} onSort={updateQuery} />
+                  <SortableHeader column="tag" sort={sort} order={order} onSort={updateQuery} />
                   <SortableHeader column="installedOn" sort={sort} order={order} onSort={updateQuery} />
                   <th>{LABELS.osVersion}</th>
                   <th>{LABELS.officeType}</th>
@@ -157,7 +158,7 @@ export function FacilityPcListPage() {
               <tbody>
                 {result.items.length === 0 ? (
                   <tr>
-                    <td colSpan={12} className="empty">
+                    <td colSpan={13} className="empty">
                       登録されたデータはありません
                     </td>
                   </tr>
@@ -166,6 +167,7 @@ export function FacilityPcListPage() {
                     <tr key={pc.id}>
                       <td>{pc.facilityName}</td>
                       <td>{pc.pcName}</td>
+                      <td>{pc.tag}</td>
                       <td>{toDisplayDate(pc.installedOn)}</td>
                       <td>{pc.osVersion}</td>
                       <td>{pc.officeType}</td>

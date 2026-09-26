@@ -3,6 +3,7 @@ import { facilityPcInputSchema, listQuerySchema } from './facility-pc-schema'
 const validInput = {
   facilityName: '中央病院',
   pcName: 'PC-001',
+  tag: null,
   installedOn: '2026-09-26',
   osVersion: 'Windows 11 24H2',
   officeType: 'H&B',
@@ -20,6 +21,10 @@ describe('facilityPcInputSchema', () => {
     expect(result.success).toBe(true)
   })
 
+  it('Tag は前後の空白を取り除いて受け付ける', () => {
+    expect(facilityPcInputSchema.parse({ ...validInput, tag: '  TAG-0001 ' }).tag).toBe('TAG-0001')
+  })
+
   it('文字列の前後の空白を取り除く', () => {
     const result = facilityPcInputSchema.parse({ ...validInput, facilityName: '  中央病院 ', pcName: '\tPC-001 ' })
     expect(result.facilityName).toBe('中央病院')
@@ -29,6 +34,7 @@ describe('facilityPcInputSchema', () => {
   it.each([
     'facilityName',
     'pcName',
+    'tag',
     'installedOn',
     'osVersion',
     'officeType',
@@ -47,6 +53,7 @@ describe('facilityPcInputSchema', () => {
     expect(facilityPcInputSchema.parse({ facilityName: '中央病院', pcName: 'PC-001' })).toEqual({
       facilityName: '中央病院',
       pcName: 'PC-001',
+      tag: null,
       installedOn: null,
       osVersion: null,
       officeType: null,
@@ -162,7 +169,7 @@ describe('listQuerySchema', () => {
     expect(listQuerySchema.safeParse({ page }).success).toBe(false)
   })
 
-  it.each(['installedOn', 'registeredOn'] as const)('sort=%s（設置日・アカウント登録日）を受け付ける', (sort) => {
+  it.each(['tag', 'installedOn', 'registeredOn'] as const)('sort=%s（設置日・アカウント登録日）を受け付ける', (sort) => {
     expect(listQuerySchema.parse({ sort }).sort).toBe(sort)
   })
 

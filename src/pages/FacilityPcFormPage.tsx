@@ -23,6 +23,7 @@ type DateField = (typeof DATE_FIELDS)[number]
 const EMPTY_VALUES: FormValues = {
   facilityName: '',
   pcName: '',
+  tag: '',
   installedOn: '',
   osVersion: '',
   officeType: '',
@@ -193,6 +194,7 @@ export function FacilityPcFormPage() {
 
         {textField('facilityName')}
         {textField('pcName')}
+        {textField('tag')}
 
         {dateField('installedOn')}
 

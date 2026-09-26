@@ -2,7 +2,7 @@ import { zValidator } from '@hono/zod-validator'
 import { Hono } from 'hono'
 import { z } from 'zod'
 import { facilityPcInputSchema, listQuerySchema } from '../../shared/facility-pc-schema'
-import { DuplicateFacilityPcError, type FacilityPcRepository } from '../db/facility-pcs-repository'
+import { DuplicateError, type FacilityPcRepository } from '../db/facility-pcs-repository'
 
 export type Bindings = {
   DATABASE_URL: string
@@ -36,7 +36,7 @@ const withDuplicateAs409 = async (c: { json: (body: unknown, status: 409) => Res
   try {
     return await action()
   } catch (error) {
-    if (error instanceof DuplicateFacilityPcError) return c.json({ message: error.message }, 409)
+    if (error instanceof DuplicateError) return c.json({ message: error.message }, 409)
     throw error
   }
 }

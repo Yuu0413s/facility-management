@@ -1,7 +1,7 @@
 import { neon } from '@neondatabase/serverless'
 import { config } from 'dotenv'
 import type { FacilityPcInput } from '../../shared/facility-pc-schema'
-import { createFacilityPcRepository, DuplicateFacilityPcError } from './facility-pcs-repository'
+import { createFacilityPcRepository, DuplicateFacilityPcError, DuplicateTagError } from './facility-pcs-repository'
 
 // 必ず .env.test（Neon のテスト用ブランチ）を読む。本番の .env は読まない
 config({ path: '.env.test', quiet: true })
@@ -10,6 +10,7 @@ const databaseUrl = process.env.DATABASE_URL
 const baseInput: FacilityPcInput = {
   facilityName: '中央病院',
   pcName: 'PC-001',
+  tag: null,
   installedOn: '2026-09-26',
   osVersion: 'Windows 11',
   officeType: 'Pro',
@@ -59,6 +60,27 @@ describe.skipIf(!databaseUrl)('facilityPcRepository（Neon テスト用ブラン
       await expect(repository.create(baseInput)).rejects.toBeInstanceOf(DuplicateFacilityPcError)
     })
 
+    it('Tag は大文字・小文字を区別せずに重複を禁止し、PC名の重複とは別のエラーにする', async () => {
+      await repository.create({ ...baseInput, tag: 'TAG-0001' })
+      const error = await repository.create({ ...baseInput, pcName: 'PC-002', tag: 'tag-0001' }).catch((e: unknown) => e)
+      expect(error).toBeInstanceOf(DuplicateTagError)
+      expect((error as Error).message).toBe('同じTagがすでに登録されています')
+
+      const pcError = await repository.create({ ...baseInput, tag: 'TAG-0002' }).catch((e: unknown) => e)
+      expect(pcError).toBeInstanceOf(DuplicateFacilityPcError)
+      expect((pcError as Error).message).toBe('同じ施設に同じPC名がすでに登録されています')
+    })
+
+    it('Tag が空欄の行はいくつでも登録できる', async () => {
+      await repository.create({ ...baseInput, tag: null })
+      await expect(repository.create({ ...baseInput, pcName: 'PC-002', tag: null })).resolves.toBeDefined()
+    })
+
+    it('Tag を保存・取得できる', async () => {
+      const created = await repository.create({ ...baseInput, tag: 'TAG-0001' })
+      expect((await repository.findById(created.id))?.tag).toBe('TAG-0001')
+    })
+
     it('別の施設なら同じPC名を登録できる', async () => {
       await repository.create(baseInput)
       await expect(repository.create({ ...baseInput, facilityName: '東病院' })).resolves.toBeDefined()
@@ -69,6 +91,7 @@ describe.skipIf(!databaseUrl)('facilityPcRepository（Neon テスト用ブラン
     const onlyNames = (facilityName: string | null, pcName: string | null): FacilityPcInput => ({
       facilityName,
       pcName,
+      tag: null,
       installedOn: null,
       osVersion: null,
       officeType: null,
@@ -214,6 +237,23 @@ describe.skipIf(!databaseUrl)('facilityPcRepository（Neon テスト用ブラン
       const result = await repository.list({ q: '中央', sort: 'facilityName', order: 'asc', page: 1 })
       expect(names(result.items)).toEqual(['中央クリニック/PC-1', '中央病院/PC-1'])
       expect(result.total).toBe(2)
+    })
+
+    it('検索語は施設名か Tag のどちらかに含まれていれば見つかる', async () => {
+      await repository.create({ ...baseInput, facilityName: '中央病院', pcName: 'PC-1', tag: 'ZZ-1' })
+      await repository.create({ ...baseInput, facilityName: '東病院', pcName: 'PC-1', tag: '中央-99' })
+      await repository.create({ ...baseInput, facilityName: '西病院', pcName: 'PC-1', tag: null })
+      const result = await repository.list({ q: '中央', sort: 'facilityName', order: 'asc', page: 1 })
+      expect(names(result.items)).toEqual(['中央病院/PC-1', '東病院/PC-1'])
+      expect(result.total).toBe(2)
+    })
+
+    it.each(['asc', 'desc'] as const)('Tag で並べ替えると、空欄は %s でも最後', async (order) => {
+      await repository.create({ ...baseInput, facilityName: 'A病院', tag: null })
+      await repository.create({ ...baseInput, facilityName: 'B病院', tag: 'T-2' })
+      await repository.create({ ...baseInput, facilityName: 'C病院', tag: 'T-1' })
+      const result = await repository.list({ sort: 'tag', order, page: 1 })
+      expect(result.items.map((item) => item.tag)).toEqual(order === 'asc' ? ['T-1', 'T-2', null] : ['T-2', 'T-1', null])
     })
 
     it('検索語の % と _ は普通の文字として扱う', async () => {

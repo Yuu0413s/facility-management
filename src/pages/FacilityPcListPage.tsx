@@ -1,6 +1,13 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { Link, useSearchParams } from 'react-router'
-import { listQuerySchema, type FacilityPc, type FacilityPcPage, type ListQuery } from '../../shared/facility-pc-schema'
+import {
+  listQuerySchema,
+  type FacilityPc,
+  type FacilityPcPage,
+  type ListQuery,
+  type SortKey,
+  type SortOrder,
+} from '../../shared/facility-pc-schema'
 import { deleteFacilityPc, fetchFacilityPcPage } from '../api/facility-pcs-client'
 import { Pagination } from '../components/Pagination'
 import { SecretCell } from '../components/SecretCell'
@@ -8,7 +15,7 @@ import { toDisplayDate } from '../lib/date'
 import { exportFacilityPcsToExcel, type ExportKind } from '../lib/export-excel'
 import { FACILITY_PC_LABELS as LABELS } from '../lib/facility-pc-labels'
 
-const DEFAULT_QUERY: ListQuery = { order: 'asc', page: 1 }
+const DEFAULT_QUERY: ListQuery = { sort: 'facilityName', order: 'asc', page: 1 }
 
 // 検索条件は URL に持たせる。編集ページから戻ったときやリロード時も同じ一覧を再現するため
 const parseQuery = (searchParams: URLSearchParams): ListQuery => {
@@ -16,8 +23,8 @@ const parseQuery = (searchParams: URLSearchParams): ListQuery => {
   return result.success ? result.data : DEFAULT_QUERY
 }
 
-const toSearchParams = ({ q, order, page }: ListQuery) => {
-  const params = new URLSearchParams({ order, page: String(page) })
+const toSearchParams = ({ q, sort, order, page }: ListQuery) => {
+  const params = new URLSearchParams({ sort, order, page: String(page) })
   if (q) params.set('q', q)
   return params
 }
@@ -27,7 +34,7 @@ const errorMessage = (error: unknown) => (error instanceof Error ? error.message
 export function FacilityPcListPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const query = parseQuery(searchParams)
-  const { q, order, page } = query
+  const { q, sort, order, page } = query
 
   const [keyword, setKeyword] = useState(q ?? '')
   const [result, setResult] = useState<FacilityPcPage | null>(null)
@@ -41,14 +48,14 @@ export function FacilityPcListPage() {
     setError(null)
     // 前の条件の表を残すと、失敗時に別の条件のデータを編集・削除できてしまうため、一度消す
     setResult(null)
-    fetchFacilityPcPage({ q, order, page })
+    fetchFacilityPcPage({ q, sort, order, page })
       .then((data) => {
         if (isCancelled) return
         // 最終ページの最後の1件を削除したときなど、範囲外のページにいたら最終ページへ移る。
         // 前の条件の結果と取り違えないよう、この取得の結果だけで判定する
         const lastPage = Math.max(1, Math.ceil(data.total / data.perPage))
         if (data.page > lastPage) {
-          setSearchParams(toSearchParams({ q, order, page: lastPage }), { replace: true })
+          setSearchParams(toSearchParams({ q, sort, order, page: lastPage }), { replace: true })
           return
         }
         setResult(data)
@@ -57,7 +64,7 @@ export function FacilityPcListPage() {
     return () => {
       isCancelled = true
     }
-  }, [q, order, page, reloadCount, setSearchParams])
+  }, [q, sort, order, page, reloadCount, setSearchParams])
 
   // ブラウザの「戻る・進む」で URL の検索語が変わったら、検索欄の文字もそれに合わせる
   useEffect(() => {
@@ -131,16 +138,8 @@ export function FacilityPcListPage() {
             <table>
               <thead>
                 <tr>
-                  <th aria-sort={order === 'asc' ? 'ascending' : 'descending'}>
-                    <button
-                      type="button"
-                      className="sort-button"
-                      onClick={() => updateQuery({ order: order === 'asc' ? 'desc' : 'asc', page: 1 })}
-                    >
-                      {LABELS.facilityName} {order === 'asc' ? '▲' : '▼'}
-                    </button>
-                  </th>
-                  <th>{LABELS.pcName}</th>
+                  <SortableHeader column="facilityName" sort={sort} order={order} onSort={updateQuery} />
+                  <SortableHeader column="pcName" sort={sort} order={order} onSort={updateQuery} />
                   <th>{LABELS.installedOn}</th>
                   <th>{LABELS.osVersion}</th>
                   <th>{LABELS.officeType}</th>
@@ -266,5 +265,32 @@ function ExportMenu({ isExporting, onSelect }: { isExporting: boolean; onSelect:
         </div>
       )}
     </div>
+  )
+}
+
+function SortableHeader({
+  column,
+  sort,
+  order,
+  onSort,
+}: {
+  column: SortKey
+  sort: SortKey
+  order: SortOrder
+  onSort: (next: Pick<ListQuery, 'sort' | 'order' | 'page'>) => void
+}) {
+  const isActive = column === sort
+  // 並べ替え中の列なら昇順・降順を切り替え、別の列ならその列の昇順から始める
+  const nextOrder: SortOrder = isActive && order === 'asc' ? 'desc' : 'asc'
+
+  return (
+    <th aria-sort={isActive ? (order === 'asc' ? 'ascending' : 'descending') : undefined}>
+      <button type="button" className="sort-button" onClick={() => onSort({ sort: column, order: nextOrder, page: 1 })}>
+        {LABELS[column]}{' '}
+        <span className={isActive ? 'sort-indicator' : 'sort-indicator inactive'} aria-hidden="true">
+          {isActive ? (order === 'asc' ? '▲' : '▼') : '↕'}
+        </span>
+      </button>
+    </th>
   )
 }

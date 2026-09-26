@@ -91,34 +91,46 @@ describe.skipIf(!databaseUrl)('facilityPcRepository（Neon テスト用ブラン
 
     it('施設名の昇順・同じ施設名はPC名の昇順で並べる', async () => {
       await seed([['B病院', 'PC-2'], ['A病院', 'PC-9'], ['B病院', 'PC-1']])
-      const result = await repository.list({ order: 'asc', page: 1 })
+      const result = await repository.list({ sort: 'facilityName', order: 'asc', page: 1 })
       expect(names(result.items)).toEqual(['A病院/PC-9', 'B病院/PC-1', 'B病院/PC-2'])
       expect(result).toMatchObject({ total: 3, page: 1, perPage: 50 })
     })
 
     it('降順では施設名を逆順にし、PC名は昇順のまま', async () => {
       await seed([['B病院', 'PC-2'], ['A病院', 'PC-9'], ['B病院', 'PC-1']])
-      const result = await repository.list({ order: 'desc', page: 1 })
+      const result = await repository.list({ sort: 'facilityName', order: 'desc', page: 1 })
       expect(names(result.items)).toEqual(['B病院/PC-1', 'B病院/PC-2', 'A病院/PC-9'])
     })
 
     it('並び順は DB の設定によらず文字コード順（大文字が小文字より先）', async () => {
       await seed([['a病院', 'PC-1'], ['B病院', 'PC-1']])
-      const result = await repository.list({ order: 'asc', page: 1 })
+      const result = await repository.list({ sort: 'facilityName', order: 'asc', page: 1 })
       expect(names(result.items)).toEqual(['B病院/PC-1', 'a病院/PC-1'])
+    })
+
+    it('PC名で並べ替えると、PC名の昇順・同じPC名は施設名の昇順', async () => {
+      await seed([['C病院', 'PC-2'], ['A病院', 'PC-9'], ['B病院', 'PC-2']])
+      const result = await repository.list({ sort: 'pcName', order: 'asc', page: 1 })
+      expect(names(result.items)).toEqual(['B病院/PC-2', 'C病院/PC-2', 'A病院/PC-9'])
+    })
+
+    it('PC名の降順では、同じPC名の中は施設名の昇順のまま', async () => {
+      await seed([['C病院', 'PC-2'], ['A病院', 'PC-9'], ['B病院', 'PC-2']])
+      const result = await repository.list({ sort: 'pcName', order: 'desc', page: 1 })
+      expect(names(result.items)).toEqual(['A病院/PC-9', 'B病院/PC-2', 'C病院/PC-2'])
     })
 
     it('施設名の部分一致で絞り込み、total も絞り込み後の件数になる', async () => {
       await seed([['中央病院', 'PC-1'], ['中央クリニック', 'PC-1'], ['東病院', 'PC-1']])
-      const result = await repository.list({ q: '中央', order: 'asc', page: 1 })
+      const result = await repository.list({ q: '中央', sort: 'facilityName', order: 'asc', page: 1 })
       expect(names(result.items)).toEqual(['中央クリニック/PC-1', '中央病院/PC-1'])
       expect(result.total).toBe(2)
     })
 
     it('検索語の % と _ は普通の文字として扱う', async () => {
       await seed([['100%病院', 'PC-1'], ['1000病院', 'PC-1'], ['A_B病院', 'PC-1'], ['AXB病院', 'PC-1']])
-      expect(names((await repository.list({ q: '%', order: 'asc', page: 1 })).items)).toEqual(['100%病院/PC-1'])
-      expect(names((await repository.list({ q: '_', order: 'asc', page: 1 })).items)).toEqual(['A_B病院/PC-1'])
+      expect(names((await repository.list({ q: '%', sort: 'facilityName', order: 'asc', page: 1 })).items)).toEqual(['100%病院/PC-1'])
+      expect(names((await repository.list({ q: '_', sort: 'facilityName', order: 'asc', page: 1 })).items)).toEqual(['A_B病院/PC-1'])
     })
 
     it('50件ごとに分割し、範囲外のページは空で total は保持する', async () => {
@@ -127,9 +139,9 @@ describe.skipIf(!databaseUrl)('facilityPcRepository（Neon テスト用ブラン
         SELECT '病院', 'PC-' || lpad(n::text, 3, '0'), '2026-01-01', 'Win', 'Pro', '2021', 'K', 'a', 'p'
         FROM generate_series(1, 51) AS n
       `
-      const page1 = await repository.list({ order: 'asc', page: 1 })
-      const page2 = await repository.list({ order: 'asc', page: 2 })
-      const page3 = await repository.list({ order: 'asc', page: 3 })
+      const page1 = await repository.list({ sort: 'facilityName', order: 'asc', page: 1 })
+      const page2 = await repository.list({ sort: 'facilityName', order: 'asc', page: 2 })
+      const page3 = await repository.list({ sort: 'facilityName', order: 'asc', page: 3 })
       expect(page1.items).toHaveLength(50)
       expect(page2.items.map((item) => item.pcName)).toEqual(['PC-051'])
       expect(page3.items).toEqual([])

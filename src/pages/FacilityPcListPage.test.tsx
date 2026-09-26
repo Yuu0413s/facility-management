@@ -36,7 +36,13 @@ const pageOf = (items: FacilityPc[], overrides: Partial<FacilityPcPage> = {}): F
 
 function EditPageStub() {
   const location = useLocation()
-  return <p>編集ページ {location.pathname}</p>
+  const state = location.state as { returnTo?: string } | null
+  return (
+    <>
+      <p>編集ページ {location.pathname}</p>
+      <p>戻り先 {state?.returnTo}</p>
+    </>
+  )
 }
 
 function BackButton() {
@@ -71,7 +77,7 @@ describe('FacilityPcListPage', () => {
   it('1ページ目を施設名の昇順で取得し、全項目を表示する（日付は yyyy/mm/dd、Keyとパスワードは伏せる）', async () => {
     renderPage()
     const row = await screen.findByRole('row', { name: /中央病院/ })
-    expect(lastQuery()).toEqual({ q: undefined, order: 'asc', page: 1 })
+    expect(lastQuery()).toEqual({ q: undefined, sort: 'facilityName', order: 'asc', page: 1 })
     for (const text of ['中央病院', 'PC-001', '2026/09/26', 'Windows 11', 'H&B', '2021', 'user1', 'メモ']) {
       expect(within(row).getByText(text)).toBeInTheDocument()
     }
@@ -86,18 +92,39 @@ describe('FacilityPcListPage', () => {
     expect(await sortHeader()).toHaveAttribute('aria-sort', 'ascending')
 
     await userEvent.click(within(await sortHeader()).getByRole('button'))
-    await waitFor(() => expect(lastQuery()).toEqual({ q: undefined, order: 'desc', page: 1 }))
+    await waitFor(() => expect(lastQuery()).toEqual({ q: undefined, sort: 'facilityName', order: 'desc', page: 1 }))
     expect(await sortHeader()).toHaveAttribute('aria-sort', 'descending')
 
     await userEvent.click(within(await sortHeader()).getByRole('button'))
     await waitFor(() => expect(lastQuery()).toMatchObject({ order: 'asc' }))
   })
 
+  it('PC名の見出しを押すとPC名の昇順、もう一度押すと降順になり、1ページ目に戻る', async () => {
+    vi.mocked(fetchFacilityPcPage).mockResolvedValue(pageOf([pc], { total: 120 }))
+    renderPage('/?page=2')
+    const header = (name: RegExp) => screen.findByRole('columnheader', { name })
+
+    await userEvent.click(within(await header(/PC名/)).getByRole('button'))
+    await waitFor(() => expect(lastQuery()).toEqual({ q: undefined, sort: 'pcName', order: 'asc', page: 1 }))
+    expect(await header(/PC名/)).toHaveAttribute('aria-sort', 'ascending')
+    expect(await header(/施設名/)).not.toHaveAttribute('aria-sort')
+
+    await userEvent.click(within(await header(/PC名/)).getByRole('button'))
+    await waitFor(() => expect(lastQuery()).toMatchObject({ sort: 'pcName', order: 'desc' }))
+    expect(await header(/PC名/)).toHaveAttribute('aria-sort', 'descending')
+  })
+
+  it('別の列の見出しを押すと、その列の昇順から始める', async () => {
+    renderPage('/?sort=pcName&order=desc')
+    await userEvent.click(within(await screen.findByRole('columnheader', { name: /施設名/ })).getByRole('button'))
+    await waitFor(() => expect(lastQuery()).toEqual({ q: undefined, sort: 'facilityName', order: 'asc', page: 1 }))
+  })
+
   it('施設名で検索すると1ページ目から取得し直す', async () => {
     renderPage('/?page=3')
     await userEvent.type(await screen.findByRole('searchbox', { name: '施設名で検索' }), '  中央 ')
     await userEvent.click(screen.getByRole('button', { name: '検索' }))
-    await waitFor(() => expect(lastQuery()).toEqual({ q: '中央', order: 'asc', page: 1 }))
+    await waitFor(() => expect(lastQuery()).toEqual({ q: '中央', sort: 'facilityName', order: 'asc', page: 1 }))
   })
 
   it('ブラウザの「戻る」で検索条件が戻ったら、検索欄の文字も戻す', async () => {
@@ -140,10 +167,13 @@ describe('FacilityPcListPage', () => {
     expect(deleteFacilityPc).not.toHaveBeenCalled()
   })
 
-  it('編集リンクは今の検索条件を引き継いで編集ページへ移動する', async () => {
-    renderPage('/?order=desc&page=2')
+  it('編集リンクは今の検索・並べ替え・ページの条件を引き継いで編集ページへ移動する', async () => {
+    const listUrl = `/?q=${encodeURIComponent('中央')}&sort=pcName&order=desc&page=2`
+    vi.mocked(fetchFacilityPcPage).mockResolvedValue(pageOf([pc], { total: 120, page: 2 }))
+    renderPage(listUrl)
     await userEvent.click(await screen.findByRole('link', { name: '編集' }))
     expect(screen.getByText('編集ページ /edit/7')).toBeInTheDocument()
+    expect(screen.getByText(`戻り先 ${listUrl}`)).toBeInTheDocument()
   })
 
   it('新規登録ページへ移動できる', async () => {

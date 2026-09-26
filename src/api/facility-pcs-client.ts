@@ -30,9 +30,10 @@ const sendJson = (method: 'POST' | 'PUT', body: FacilityPcInput): RequestInit =>
   body: JSON.stringify(body),
 })
 
-export const fetchFacilityPcPage = ({ q, order, page }: ListQuery) => {
+export const fetchFacilityPcPage = ({ q, sort, order, page }: ListQuery) => {
   const params = new URLSearchParams()
   if (q) params.set('q', q)
+  params.set('sort', sort)
   params.set('order', order)
   params.set('page', String(page))
   return request<FacilityPcPage>(`${BASE_URL}?${params}`)

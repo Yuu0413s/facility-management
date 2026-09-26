@@ -36,14 +36,14 @@ describe('facility-pcs-client', () => {
   it('一覧は検索条件をクエリ文字列にして取得する', async () => {
     const page = { items: [], total: 0, page: 2, perPage: 50 }
     fetchMock.mockResolvedValue(jsonResponse(page))
-    await expect(fetchFacilityPcPage({ q: '中央 病院', order: 'desc', page: 2 })).resolves.toEqual(page)
-    expect(fetchMock).toHaveBeenCalledWith('/api/facility-pcs?q=%E4%B8%AD%E5%A4%AE+%E7%97%85%E9%99%A2&order=desc&page=2', undefined)
+    await expect(fetchFacilityPcPage({ q: '中央 病院', sort: 'pcName', order: 'desc', page: 2 })).resolves.toEqual(page)
+    expect(fetchMock).toHaveBeenCalledWith('/api/facility-pcs?q=%E4%B8%AD%E5%A4%AE+%E7%97%85%E9%99%A2&sort=pcName&order=desc&page=2', undefined)
   })
 
   it('検索語が無ければ q を付けない', async () => {
     fetchMock.mockResolvedValue(jsonResponse({ items: [], total: 0, page: 1, perPage: 50 }))
-    await fetchFacilityPcPage({ order: 'asc', page: 1 })
-    expect(fetchMock).toHaveBeenCalledWith('/api/facility-pcs?order=asc&page=1', undefined)
+    await fetchFacilityPcPage({ sort: 'facilityName', order: 'asc', page: 1 })
+    expect(fetchMock).toHaveBeenCalledWith('/api/facility-pcs?sort=facilityName&order=asc&page=1', undefined)
   })
 
   it('全件・1件を取得する', async () => {

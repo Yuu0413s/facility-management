@@ -5,6 +5,7 @@ import {
   type FacilityPcInput,
   type FacilityPcPage,
   type ListQuery,
+  type SortKey,
 } from '../../shared/facility-pc-schema'
 
 export class DuplicateFacilityPcError extends Error {
@@ -43,6 +44,13 @@ const COLUMNS = `
   remarks
 `
 
+// 並べ替えの列名はプレースホルダにできないため、許可済みの対応表からだけ組み立てる。
+// 2列目は同じ値が並んだときの順番（施設名順なら PC名、PC名順なら施設名）
+const SORT_COLUMNS: Record<SortKey, [primary: string, secondary: string]> = {
+  facilityName: ['facility_name', 'pc_name'],
+  pcName: ['pc_name', 'facility_name'],
+}
+
 // LIKE の特殊文字（\ % _）を普通の文字として扱う
 const toContainsPattern = (keyword: string) => `%${keyword.replace(/[\\%_]/g, (char) => `\\${char}`)}%`
 
@@ -55,18 +63,19 @@ const rethrowDuplicate = (error: unknown): never => {
 }
 
 export const createFacilityPcRepository = (sql: Sql): FacilityPcRepository => ({
-  async list({ q, order, page }) {
+  async list({ q, sort, order, page }) {
     const pattern = q === undefined ? null : toContainsPattern(q)
     const where = `WHERE ($1::text IS NULL OR facility_name ILIKE $1 ESCAPE '\\')`
     // ORDER BY の方向はプレースホルダにできないため、許可済みの2値からだけ組み立てる
     const direction = order === 'desc' ? 'DESC' : 'ASC'
+    const [primary, secondary] = SORT_COLUMNS[sort]
 
     // RepeatableRead で2本の SELECT に同じ時点のデータを見せ、items と total の食い違いを防ぐ
     const [items, counts] = await sql.transaction(
       [
         sql.query(
           `SELECT ${COLUMNS} FROM facility_pcs ${where}
-           ORDER BY facility_name COLLATE "C" ${direction}, pc_name COLLATE "C" ASC, id ASC
+           ORDER BY ${primary} COLLATE "C" ${direction}, ${secondary} COLLATE "C" ASC, id ASC
            LIMIT $2 OFFSET $3`,
           [pattern, PER_PAGE, (page - 1) * PER_PAGE],
         ),

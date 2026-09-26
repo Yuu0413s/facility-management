@@ -1,4 +1,11 @@
-import type { FacilityPc, FacilityPcInput, FacilityPcPage, ListQuery } from '../../shared/facility-pc-schema'
+import type {
+  FacilityPc,
+  FacilityPcInput,
+  FacilityPcPage,
+  ImportResult,
+  ImportRow,
+  ListQuery,
+} from '../../shared/facility-pc-schema'
 
 const BASE_URL = '/api/facility-pcs'
 
@@ -49,3 +56,10 @@ export const updateFacilityPc = (id: number, input: FacilityPcInput) =>
   request<FacilityPc>(`${BASE_URL}/${id}`, sendJson('PUT', input))
 
 export const deleteFacilityPc = (id: number) => request<void>(`${BASE_URL}/${id}`, { method: 'DELETE' })
+
+export const importFacilityPcs = (rows: ImportRow[]) =>
+  request<ImportResult>(`${BASE_URL}/import`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ rows }),
+  })

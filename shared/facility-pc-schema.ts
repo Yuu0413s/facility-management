@@ -76,3 +76,20 @@ export type SortOrder = z.infer<typeof listQuerySchema>['order']
 export type ListQuery = { q?: string; sort: SortKey; order: SortOrder; page: number }
 export type FacilityPc = FacilityPcInput & { id: number }
 export type FacilityPcPage = { items: FacilityPc[]; total: number; page: number; perPage: number }
+
+// ---- Excel 取り込み ----
+export const IMPORT_MAX_ROWS = 1000
+
+// 各行の値はここでは形だけ確かめ、中身は行ごとに facilityPcInputSchema で検証する（1行の誤りでリクエスト全体を弾かないため）
+export const importRequestSchema = z.object({
+  rows: z
+    .array(z.object({ rowNumber: z.number().int().min(1), values: z.record(z.string(), z.unknown()) }))
+    .min(1, '取り込む行がありません')
+    .max(IMPORT_MAX_ROWS, `一度に取り込めるのは${IMPORT_MAX_ROWS}行までです`),
+})
+
+export type ImportRow = z.infer<typeof importRequestSchema>['rows'][number]
+// field が null のものは、特定の項目に属さない理由（ファイル内の重複など）
+export type ImportIssue = { field: keyof FacilityPcInput | null; message: string }
+export type ImportRowError = { rowNumber: number; issues: ImportIssue[] }
+export type ImportResult = { created: number; updated: number; errors: ImportRowError[] }

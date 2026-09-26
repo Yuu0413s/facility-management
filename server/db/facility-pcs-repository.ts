@@ -32,6 +32,10 @@ export type FacilityPcRepository = {
   create(input: FacilityPcInput): Promise<FacilityPc>
   update(id: number, input: FacilityPcInput): Promise<FacilityPc | null>
   delete(id: number): Promise<boolean>
+  // 取り込み用。DB の「別の」データと Tag が重複する行の行番号を返す
+  findTagConflicts(rows: Array<{ rowNumber: number; input: FacilityPcInput }>): Promise<number[]>
+  // 取り込み用。施設名＋PC名が一致すれば上書き、なければ追加する（1本の SQL）
+  upsertMany(inputs: FacilityPcInput[]): Promise<{ created: number; updated: number }>
 }
 
 type Sql = NeonQueryFunction<false, false>
@@ -87,6 +91,13 @@ const WRITABLE_COLUMNS: Array<[column: string, field: keyof FacilityPcInput]> = 
   ['remarks', 'remarks'],
 ]
 const WRITABLE_COLUMN_NAMES = WRITABLE_COLUMNS.map(([column]) => column).join(', ')
+
+// json_to_recordset で JSON を表として読むときの列の型
+const COLUMN_TYPES: Record<string, string> = { installed_on: 'date', registered_on: 'date' }
+const RECORDSET_DEFINITION = WRITABLE_COLUMNS.map(([column]) => `${column} ${COLUMN_TYPES[column] ?? 'text'}`).join(', ')
+
+// 入力を「列名 → 値」の JSON にする（json_to_recordset で列名どおりに読むため）
+const toRecord = (input: FacilityPcInput) => Object.fromEntries(WRITABLE_COLUMNS.map(([column, field]) => [column, input[field]]))
 
 // LIKE の特殊文字（\ % _）を普通の文字として扱う
 const toContainsPattern = (keyword: string) => `%${keyword.replace(/[\\%_]/g, (char) => `\\${char}`)}%`
@@ -169,6 +180,50 @@ export const createFacilityPcRepository = (sql: Sql): FacilityPcRepository => ({
   async delete(id) {
     const rows = await sql.query('DELETE FROM facility_pcs WHERE id = $1 RETURNING id', [id])
     return rows.length > 0
+  },
+
+  async findTagConflicts(rows) {
+    const withTag = rows.filter(({ input }) => input.tag !== null)
+    if (withTag.length === 0) return []
+    // 施設名とPC名がそろっていて同じ行を上書きする場合は、自分自身の Tag なので重複とみなさない
+    const conflicts = await sql.query(
+      `SELECT DISTINCT r.row_number AS "rowNumber"
+       FROM json_to_recordset($1::json) AS r(row_number int, facility_name text, pc_name text, tag text)
+       JOIN facility_pcs e ON lower(e.tag) = lower(r.tag)
+       WHERE NOT (r.facility_name IS NOT NULL AND r.pc_name IS NOT NULL
+                  AND e.facility_name = r.facility_name AND e.pc_name = r.pc_name)
+       ORDER BY 1`,
+      [
+        JSON.stringify(
+          withTag.map(({ rowNumber, input }) => ({
+            row_number: rowNumber,
+            facility_name: input.facilityName,
+            pc_name: input.pcName,
+            tag: input.tag,
+          })),
+        ),
+      ],
+    )
+    return conflicts.map((row) => row.rowNumber as number)
+  },
+
+  async upsertMany(inputs) {
+    if (inputs.length === 0) return { created: 0, updated: 0 }
+    // Cloudflare では1リクエストで出せる外部通信の回数に上限があるため、全行を1本の SQL で書き込む。
+    // xmax = 0 は「この文で新しく挿入された行」を表す（更新された行は 0 以外になる）
+    const rows = await sql
+      .query(
+        `INSERT INTO facility_pcs (${WRITABLE_COLUMN_NAMES})
+         SELECT ${WRITABLE_COLUMN_NAMES} FROM json_to_recordset($1::json) AS r(${RECORDSET_DEFINITION})
+         ON CONFLICT (facility_name, pc_name) DO UPDATE SET
+           ${WRITABLE_COLUMNS.map(([column]) => `${column} = EXCLUDED.${column}`).join(', ')},
+           updated_at = now()
+         RETURNING (xmax = 0) AS inserted`,
+        [JSON.stringify(inputs.map(toRecord))],
+      )
+      .catch(rethrowDuplicate)
+    const created = rows.filter((row) => row.inserted).length
+    return { created, updated: rows.length - created }
   },
 })
 

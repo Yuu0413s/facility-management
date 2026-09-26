@@ -25,11 +25,14 @@
 | 一覧表示 | 表形式。PCのみ対応（収まらない場合は横スクロール。操作列は右端に固定して常に表示）。パスワードと備考の間に「アカウント登録日」（手入力、yyyy/mm/dd）を表示 |
 | 編集 | 登録済みデータの修正 |
 | 削除 | 確認ダイアログあり |
-| ソート | 施設名・PC名・設置日・アカウント登録日。列見出しクリックで昇順／降順を切り替え（別の列を押すとその列の昇順から）。文字列は文字コード順（五十音順ではない）。空欄は昇順・降順どちらでも最後。同じ値どうしは、施設名順ならPC名、PC名順なら施設名、設置日・アカウント登録日順なら施設名→PC名の昇順 |
-| 検索 | 施設名の部分一致。検索語を変えたら1ページ目に戻る |
+| ソート | 施設名・PC名・Tag・設置日・アカウント登録日。列見出しクリックで昇順／降順を切り替え（別の列を押すとその列の昇順から）。文字列は文字コード順（五十音順ではない）。空欄は昇順・降順どちらでも最後。同じ値どうしは、施設名順ならPC名、PC名順なら施設名、Tag・設置日・アカウント登録日順なら施設名→PC名の昇順 |
+| 検索 | 施設名または Tag の部分一致。検索語を変えたら1ページ目に戻る |
 | ページ分割 | 1ページ50件 |
 | パスワード・Keyの表示 | 「●●●●」で隠し、クリックで表示。Key は5桁ごとにハイフンを入れて表示（25桁の英数字でない既存データはそのまま） |
-| Excel出力 | `.xlsx`。「Excel出力」ボタンのメニューから2種類を選ぶ。どちらも常に全件（施設名→PC名順）<br>・全件出力：全11項目（パスワード・Keyも含める。アカウント登録日はパスワードと備考の間）。`施設PC一覧_yyyymmdd.xlsx`<br>・アカウント情報出力：PC名・アカウント・パスワードの3列。`アカウント情報_yyyymmdd.xlsx` |
+| Excel出力 | `.xlsx`。「Excel出力」ボタンのメニューから2種類を選ぶ。どちらも常に全件（施設名→PC名順）<br>・全件出力：全12項目（Tag は PC名の次。パスワード・Keyも含める。アカウント登録日はパスワードと備考の間）。`施設PC一覧_yyyymmdd.xlsx`<br>・アカウント情報出力：PC名・アカウント・パスワードの3列。`アカウント情報_yyyymmdd.xlsx` |
+
+| Tag | 任意の自由入力（PC名の次）。重複禁止（大文字・小文字を区別しない） |
+| Excel取り込み | 全件出力と同じ見出しの Excel を取り込む。施設名＋PC名が一致すれば上書き、なければ追加。エラー行は一覧表示。詳細は `docs/design/facility-import-and-tag.md` |
 
 ### MVPに含めない
 
@@ -63,6 +66,7 @@ CREATE TABLE facility_pcs (
   id              INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
   facility_name   TEXT,
   pc_name         TEXT,
+  tag             TEXT,  -- 重複禁止（lower(tag) の UNIQUE INDEX）
   installed_on    DATE,
   os_version      TEXT,
   office_type     TEXT CHECK (office_type IN ('Personal','H&B','Pro','Access')),
@@ -103,13 +107,14 @@ CREATE TABLE facility_pcs (
 | POST | `/api/facility-pcs` | 登録 | 201 | 400 / 409 |
 | PUT | `/api/facility-pcs/:id` | 更新 | 200 | 400 / 404 / 409 |
 | DELETE | `/api/facility-pcs/:id` | 削除 | 204 | 404 |
+| POST | `/api/facility-pcs/import` | Excel取り込み（行データの JSON） | 200 | 400 / 409 |
 
 一覧のクエリパラメータ:
 
 | パラメータ | 意味 | 既定値 |
 |---|---|---|
-| `q` | 施設名の部分一致（`%` `_` はエスケープ） | なし |
-| `sort` | `facilityName` / `pcName` / `installedOn` / `registeredOn` | `facilityName` |
+| `q` | 施設名または Tag の部分一致（`%` `_` はエスケープ） | なし |
+| `sort` | `facilityName` / `pcName` / `tag` / `installedOn` / `registeredOn` | `facilityName` |
 | `order` | `asc` / `desc` | `asc` |
 | `page` | 1始まり | `1` |
 

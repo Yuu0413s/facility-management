@@ -139,6 +139,46 @@ describe.skipIf(!databaseUrl)('facilityPcRepository（Neon テスト用ブラン
     })
   })
 
+  describe('取り込み（upsertMany / findTagConflicts）', () => {
+    it('施設名＋PC名が一致すれば上書き、なければ追加し、件数を返す（1本の SQL）', async () => {
+      const existing = await repository.create({ ...baseInput, facilityName: 'A病院', pcName: 'PC-1', remarks: '古い' })
+      const result = await repository.upsertMany([
+        { ...baseInput, facilityName: 'A病院', pcName: 'PC-1', remarks: '新しい', tag: 'TAG-1' },
+        { ...baseInput, facilityName: 'B病院', pcName: 'PC-1' },
+        { ...baseInput, facilityName: 'C病院', pcName: null },
+      ])
+      expect(result).toEqual({ created: 2, updated: 1 })
+
+      const updated = await repository.findById(existing.id)
+      expect(updated).toMatchObject({ remarks: '新しい', tag: 'TAG-1', installedOn: '2026-09-26', registeredOn: '2026-04-01' })
+      expect(await repository.listAll()).toHaveLength(3)
+    })
+
+    it('Excel に無い既存の行はそのまま残す', async () => {
+      await repository.create({ ...baseInput, facilityName: 'Z病院' })
+      await repository.upsertMany([{ ...baseInput, facilityName: 'A病院' }])
+      expect((await repository.listAll()).map((item) => item.facilityName)).toEqual(['A病院', 'Z病院'])
+    })
+
+    it('施設名かPC名が空欄の行は照合できないので、常に追加する', async () => {
+      await repository.upsertMany([{ ...baseInput, facilityName: 'A病院', pcName: null }])
+      const result = await repository.upsertMany([{ ...baseInput, facilityName: 'A病院', pcName: null }])
+      expect(result).toEqual({ created: 1, updated: 0 })
+    })
+
+    it('Tag が DB の「別の」データと重複する行の行番号を返す（同じ施設名＋PC名の行を上書きする場合は重複とみなさない）', async () => {
+      await repository.create({ ...baseInput, facilityName: 'A病院', pcName: 'PC-1', tag: 'TAG-1' })
+      const conflicts = await repository.findTagConflicts([
+        { rowNumber: 2, input: { ...baseInput, facilityName: 'A病院', pcName: 'PC-1', tag: 'tag-1' } },
+        { rowNumber: 3, input: { ...baseInput, facilityName: 'B病院', pcName: 'PC-1', tag: 'TAG-1' } },
+        { rowNumber: 4, input: { ...baseInput, facilityName: 'A病院', pcName: null, tag: 'TAG-1' } },
+        { rowNumber: 5, input: { ...baseInput, facilityName: 'C病院', pcName: 'PC-1', tag: 'TAG-9' } },
+        { rowNumber: 6, input: { ...baseInput, facilityName: 'D病院', pcName: 'PC-1', tag: null } },
+      ])
+      expect(conflicts).toEqual([3, 4])
+    })
+  })
+
   describe('update', () => {
     it('内容を更新し、updated_at を進める', async () => {
       const created = await repository.create(baseInput)

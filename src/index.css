@@ -308,3 +308,24 @@ th.actions-column {
   color: var(--color-muted);
   opacity: 0.6;
 }
+
+/* Excel取り込みの結果 */
+.import-summary {
+  margin-bottom: 16px;
+  padding: 12px 16px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+}
+
+.import-summary-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.import-summary table {
+  width: auto;
+  white-space: normal;
+}

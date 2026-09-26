@@ -6,6 +6,7 @@ import {
   fetchAllFacilityPcs,
   fetchFacilityPc,
   fetchFacilityPcPage,
+  importFacilityPcs,
   updateFacilityPc,
 } from './facility-pcs-client'
 
@@ -63,6 +64,15 @@ describe('facility-pcs-client', () => {
       ['/api/facility-pcs', 'POST', JSON.stringify(input)],
       ['/api/facility-pcs/1', 'PUT', JSON.stringify(input)],
     ])
+  })
+
+  it('取り込みは行データを JSON で送り、結果を返す', async () => {
+    const result = { created: 1, updated: 0, errors: [] }
+    fetchMock.mockResolvedValue(jsonResponse(result))
+    const rows = [{ rowNumber: 2, values: { facilityName: 'A病院' } }]
+    await expect(importFacilityPcs(rows)).resolves.toEqual(result)
+    const [url, init] = fetchMock.mock.calls[0]
+    expect([url, init.method, init.body]).toEqual(['/api/facility-pcs/import', 'POST', JSON.stringify({ rows })])
   })
 
   it('削除は 204 を成功として扱う', async () => {

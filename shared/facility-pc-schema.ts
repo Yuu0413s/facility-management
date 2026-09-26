@@ -46,7 +46,7 @@ export const listQuerySchema = z.object({
 })
 
 export type FacilityPcInput = z.infer<typeof facilityPcInputSchema>
-export type ListQuery = z.infer<typeof listQuerySchema>
-export type SortOrder = ListQuery['order']
+export type SortOrder = z.infer<typeof listQuerySchema>['order']
+export type ListQuery = { q?: string; order: SortOrder; page: number }
 export type FacilityPc = FacilityPcInput & { id: number }
 export type FacilityPcPage = { items: FacilityPc[]; total: number; page: number; perPage: number }

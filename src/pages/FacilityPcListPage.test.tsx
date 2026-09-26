@@ -96,7 +96,7 @@ describe('FacilityPcListPage', () => {
 
   it.each([
     ['設置日', 'installedOn'],
-    ['登録日', 'registeredOn'],
+    ['アカウント登録日', 'registeredOn'],
   ] as const)('%s の見出しを押すとその列の昇順で並べ替え、もう一度押すと降順になる', async (label, sort) => {
     renderPage()
     const header = () => screen.findByRole('columnheader', { name: new RegExp(label) })
@@ -107,11 +107,11 @@ describe('FacilityPcListPage', () => {
     await waitFor(() => expect(lastQuery()).toMatchObject({ sort, order: 'desc' }))
   })
 
-  it('「登録日」の列を「パスワード」と「備考」の間に表示する', async () => {
+  it('「アカウント登録日」の列を「パスワード」と「備考」の間に表示する', async () => {
     renderPage()
     await screen.findByRole('row', { name: /中央病院/ })
     const headers = screen.getAllByRole('columnheader').map((header) => header.textContent?.replace(/[▲▼↕]/g, '').trim())
-    expect(headers.slice(headers.indexOf('パスワード'), headers.indexOf('パスワード') + 3)).toEqual(['パスワード', '登録日', '備考'])
+    expect(headers.slice(headers.indexOf('パスワード'), headers.indexOf('パスワード') + 3)).toEqual(['パスワード', 'アカウント登録日', '備考'])
   })
 
   it('施設名の見出しを押すたびに昇順・降順を切り替え、1ページ目に戻る', async () => {
@@ -191,7 +191,7 @@ describe('FacilityPcListPage', () => {
       account: null,
       password: null,
       remarks: null,
-      registeredOn: '2026-09-26',
+      registeredOn: null,
     }
     vi.mocked(fetchFacilityPcPage).mockResolvedValue(pageOf([blank]))
     renderPage()

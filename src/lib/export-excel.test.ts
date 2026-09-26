@@ -17,20 +17,20 @@ const rows: FacilityPc[] = [
     registeredOn: '2026-09-20',
   },
   { id: 2, facilityName: '東病院', pcName: 'PC-002', installedOn: '2025-01-05', osVersion: 'Windows 10', officeType: 'Pro', officeVersion: '2016', licenseKey: 'KEY-2', account: 'user2', password: 'pw', remarks: null, registeredOn: '2026-01-02' },
-  { id: 3, facilityName: '西病院', pcName: null, installedOn: null, osVersion: null, officeType: null, officeVersion: null, licenseKey: null, account: null, password: null, remarks: null, registeredOn: '2026-09-26' },
+  { id: 3, facilityName: '西病院', pcName: null, installedOn: null, osVersion: null, officeType: null, officeVersion: null, licenseKey: null, account: null, password: null, remarks: null, registeredOn: null },
 ]
 
 describe('buildFacilityPcWorkbook', () => {
-  it('見出し行と、パスワード・Key・登録日を含む全項目を画面と同じ表記で出力する（Key は5桁ごとにハイフン、形式外の既存データはそのまま）', async () => {
+  it('見出し行と、パスワード・Key・アカウント登録日を含む全項目を画面と同じ表記で出力する（Key は5桁ごとにハイフン、形式外の既存データはそのまま）', async () => {
     const workbook = await buildFacilityPcWorkbook(rows, 'all')
     const sheet = workbook.getWorksheet('施設PC一覧')!
     const values = (rowNumber: number) => (sheet.getRow(rowNumber).values as unknown[]).slice(1)
 
-    expect(values(1)).toEqual(['施設名', 'PC名', '設置日', 'OSバージョン', 'Office種類', 'Officeバージョン', 'Key', 'アカウント', 'パスワード', '登録日', '備考'])
+    expect(values(1)).toEqual(['施設名', 'PC名', '設置日', 'OSバージョン', 'Office種類', 'Officeバージョン', 'Key', 'アカウント', 'パスワード', 'アカウント登録日', '備考'])
     expect(values(2)).toEqual(['中央病院', 'PC-001', '2026/09/26', 'Windows 11', 'H&B', '2021', 'ABCDE-12345-FGHIJ-67890-KLMNO', 'user1', 'secret', '2026/09/20', '1行目\n2行目'])
     expect(values(3)).toEqual(['東病院', 'PC-002', '2025/01/05', 'Windows 10', 'Pro', '2016', 'KEY-2', 'user2', 'pw', '2026/01/02', ''])
     // 空欄の項目は空のセルにする
-    expect(values(4)).toEqual(['西病院', '', '', '', '', '', '', '', '', '2026/09/26', ''])
+    expect(values(4)).toEqual(['西病院', '', '', '', '', '', '', '', '', '', ''])
     expect(sheet.rowCount).toBe(4)
   })
 })

@@ -54,6 +54,7 @@ const fillAll = async () => {
   await user.type(screen.getByLabelText('Key'), 'abcde-12345-fghij-67890-klmno')
   await user.type(screen.getByLabelText('アカウント'), 'user1')
   await user.type(screen.getByLabelText('パスワード'), 'secret')
+  await user.type(screen.getByLabelText('アカウント登録日'), '20260920')
   await user.type(screen.getByLabelText('備考'), '1行目{Enter}2行目')
   return user
 }
@@ -67,7 +68,7 @@ describe('FacilityPcFormPage（新規登録）', () => {
     const user = await fillAll()
     await user.click(screen.getByRole('button', { name: '登録する' }))
 
-    expect(createFacilityPc).toHaveBeenCalledWith({ ...saved, id: undefined, registeredOn: undefined })
+    expect(createFacilityPc).toHaveBeenCalledWith({ ...saved, id: undefined })
     expect(await screen.findByText('一覧ページ ?order=desc&page=2')).toBeInTheDocument()
   })
 
@@ -105,6 +106,7 @@ describe('FacilityPcFormPage（新規登録）', () => {
       licenseKey: null,
       account: null,
       password: null,
+      registeredOn: null,
       remarks: null,
     })
   })
@@ -151,6 +153,33 @@ describe('FacilityPcFormPage（新規登録）', () => {
     expect(createFacilityPc).toHaveBeenCalledWith(expect.objectContaining({ installedOn: '2026-09-26' }))
   })
 
+  it('アカウント登録日は「パスワード」と「備考」の間にあり、設置日と同じく yyyymmdd で入力しカレンダーでも選べる', async () => {
+    vi.mocked(createFacilityPc).mockResolvedValue(saved)
+    renderPage('/new')
+    const labels = Array.from(document.querySelectorAll('label')).map((label) => label.textContent)
+    expect(labels.slice(labels.indexOf('パスワード'), labels.indexOf('パスワード') + 3)).toEqual(['パスワード', 'アカウント登録日', '備考'])
+    expect(screen.getByLabelText('アカウント登録日')).toHaveAttribute('placeholder', 'yyyymmdd')
+
+    fireEvent.change(screen.getByLabelText('アカウント登録日をカレンダーから選択'), { target: { value: '2024-05-01' } })
+    expect(screen.getByLabelText('アカウント登録日')).toHaveValue('20240501')
+    expect(screen.getByLabelText('設置日')).toHaveValue('')
+
+    const user = userEvent.setup()
+    await user.type(screen.getByLabelText('施設名'), '中央病院')
+    await user.click(screen.getByRole('button', { name: '登録する' }))
+    expect(createFacilityPc).toHaveBeenCalledWith(expect.objectContaining({ registeredOn: '2024-05-01', installedOn: null }))
+  })
+
+  it.each(['2024/05/01', '2024-05-01'])('アカウント登録日の %s（8桁の数字でない形）は受け付けない', async (typed) => {
+    renderPage('/new')
+    const user = userEvent.setup()
+    await user.type(screen.getByLabelText('施設名'), '中央病院')
+    await user.type(screen.getByLabelText('アカウント登録日'), typed)
+    await user.click(screen.getByRole('button', { name: '登録する' }))
+    expect(screen.getByLabelText('アカウント登録日')).toHaveAccessibleDescription('yyyymmdd（8桁の数字）で入力してください')
+    expect(createFacilityPc).not.toHaveBeenCalled()
+  })
+
   it('存在しない日付はエラーにする', async () => {
     renderPage('/new')
     const user = await fillAll()
@@ -163,7 +192,7 @@ describe('FacilityPcFormPage（新規登録）', () => {
 
   it('カレンダーで選んだ日付を yyyymmdd で入力欄に反映する', () => {
     renderPage('/new')
-    fireEvent.change(screen.getByLabelText('カレンダーから選択'), { target: { value: '2026-09-26' } })
+    fireEvent.change(screen.getByLabelText('設置日をカレンダーから選択'), { target: { value: '2026-09-26' } })
     expect(screen.getByLabelText('設置日')).toHaveValue('20260926')
   })
 
@@ -207,7 +236,7 @@ describe('FacilityPcFormPage（編集）', () => {
     await user.type(screen.getByLabelText('OSバージョン'), 'Windows 11 24H2')
     await user.click(screen.getByRole('button', { name: '更新する' }))
 
-    const { id: _, registeredOn: __, ...input } = saved
+    const { id: _, ...input } = saved
     expect(updateFacilityPc).toHaveBeenCalledWith(7, { ...input, osVersion: 'Windows 11 24H2' })
     expect(await screen.findByText(/一覧ページ/)).toBeInTheDocument()
   })
@@ -217,7 +246,7 @@ describe('FacilityPcFormPage（編集）', () => {
     renderPage('/edit/7')
     await screen.findByDisplayValue('中央病院')
     const user = userEvent.setup()
-    for (const label of ['施設名', 'PC名', '設置日', 'OSバージョン', 'Key', 'アカウント', 'パスワード', '備考']) {
+    for (const label of ['施設名', 'PC名', '設置日', 'OSバージョン', 'Key', 'アカウント', 'パスワード', 'アカウント登録日', '備考']) {
       await user.clear(screen.getByLabelText(label))
     }
     await user.selectOptions(screen.getByLabelText('Office種類'), '')

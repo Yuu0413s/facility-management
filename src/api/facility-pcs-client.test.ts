@@ -19,6 +19,7 @@ const input: FacilityPcInput = {
   licenseKey: 'KEY-1',
   account: 'user1',
   password: 'secret',
+  registeredOn: null,
   remarks: null,
 }
 

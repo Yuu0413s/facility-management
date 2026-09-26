@@ -29,7 +29,6 @@ type Sql = NeonQueryFunction<false, false>
 const UNIQUE_VIOLATION = '23505'
 
 // 並び順は DB の既定の照合順序に任せず、文字コード順（COLLATE "C"）を明示する（設計 7-6）
-// 登録日は、サーバー（UTC）ではなく日本時間の日付にする
 // DATE 型はドライバが JS の Date に変換してタイムゾーンでずれるため、文字列で取り出す
 const COLUMNS = `
   id,
@@ -42,8 +41,8 @@ const COLUMNS = `
   license_key AS "licenseKey",
   account,
   password,
-  remarks,
-  to_char(created_at AT TIME ZONE 'Asia/Tokyo', 'YYYY-MM-DD') AS "registeredOn"
+  to_char(registered_on, 'YYYY-MM-DD') AS "registeredOn",
+  remarks
 `
 
 // 並べ替えの列はプレースホルダにできないため、許可済みの対応表からだけ組み立てる。
@@ -56,8 +55,7 @@ const SORT_ORDERS: Record<SortKey, { primary: string; ties: string }> = {
   facilityName: { primary: 'facility_name COLLATE "C"', ties: BY_PC_NAME },
   pcName: { primary: 'pc_name COLLATE "C"', ties: BY_FACILITY_NAME },
   installedOn: { primary: 'installed_on', ties: `${BY_FACILITY_NAME}, ${BY_PC_NAME}` },
-  // 画面には日付だけを出すが、並べ替えは登録日時そのもので行い、同じ日の中も登録した順に並べる
-  registeredOn: { primary: 'created_at', ties: `${BY_FACILITY_NAME}, ${BY_PC_NAME}` },
+  registeredOn: { primary: 'registered_on', ties: `${BY_FACILITY_NAME}, ${BY_PC_NAME}` },
 }
 
 // LIKE の特殊文字（\ % _）を普通の文字として扱う
@@ -110,8 +108,9 @@ export const createFacilityPcRepository = (sql: Sql): FacilityPcRepository => ({
     const rows = await sql
       .query(
         `INSERT INTO facility_pcs
-           (facility_name, pc_name, installed_on, os_version, office_type, office_version, license_key, account, password, remarks)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+           (facility_name, pc_name, installed_on, os_version, office_type, office_version, license_key, account, password,
+            registered_on, remarks)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
          RETURNING ${COLUMNS}`,
         toParams(input),
       )
@@ -124,9 +123,9 @@ export const createFacilityPcRepository = (sql: Sql): FacilityPcRepository => ({
       .query(
         `UPDATE facility_pcs SET
            facility_name = $1, pc_name = $2, installed_on = $3, os_version = $4, office_type = $5,
-           office_version = $6, license_key = $7, account = $8, password = $9, remarks = $10,
+           office_version = $6, license_key = $7, account = $8, password = $9, registered_on = $10, remarks = $11,
            updated_at = now()
-         WHERE id = $11
+         WHERE id = $12
          RETURNING ${COLUMNS}`,
         [...toParams(input), id],
       )
@@ -150,5 +149,6 @@ const toParams = (input: FacilityPcInput) => [
   input.licenseKey,
   input.account,
   input.password,
+  input.registeredOn,
   input.remarks,
 ]

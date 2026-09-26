@@ -50,6 +50,8 @@ export const facilityPcInputSchema = z
     licenseKey: optional(productKey),
     account: optionalText,
     password: optionalText,
+    // アカウント登録日（手入力）。DB に登録した日時（created_at）とは別
+    registeredOn: optional(isoDate),
     remarks: optional(z.string().trim().max(REMARKS_MAX_LENGTH, `${REMARKS_MAX_LENGTH}文字以内で入力してください`)),
   })
   // 中身が空の行を誤って登録しないよう、全項目が空欄のときだけ弾く
@@ -70,6 +72,5 @@ export type FacilityPcInput = z.infer<typeof facilityPcInputSchema>
 export type SortKey = (typeof SORT_KEYS)[number]
 export type SortOrder = z.infer<typeof listQuerySchema>['order']
 export type ListQuery = { q?: string; sort: SortKey; order: SortOrder; page: number }
-// registeredOn（登録日）は DB が自動で記録する created_at の日本時間の日付。登録・更新では受け付けない
-export type FacilityPc = FacilityPcInput & { id: number; registeredOn: string }
+export type FacilityPc = FacilityPcInput & { id: number }
 export type FacilityPcPage = { items: FacilityPc[]; total: number; page: number; perPage: number }

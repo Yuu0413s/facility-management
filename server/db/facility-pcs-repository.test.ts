@@ -17,6 +17,7 @@ const baseInput: FacilityPcInput = {
   licenseKey: 'KEY-1',
   account: 'user1',
   password: 'secret',
+  registeredOn: '2026-04-01',
   remarks: null,
 }
 
@@ -37,7 +38,7 @@ describe.skipIf(!databaseUrl)('facilityPcRepository（Neon テスト用ブラン
   describe('create / findById', () => {
     it('登録した行を id 付きで返し、id で取得できる', async () => {
       const created = await repository.create({ ...baseInput, remarks: '1行目\n2行目' })
-      expect(created).toEqual({ ...baseInput, remarks: '1行目\n2行目', id: expect.any(Number), registeredOn: expect.any(String) })
+      expect(created).toEqual({ ...baseInput, remarks: '1行目\n2行目', id: expect.any(Number) })
       expect(await repository.findById(created.id)).toEqual(created)
     })
 
@@ -45,14 +46,12 @@ describe.skipIf(!databaseUrl)('facilityPcRepository（Neon テスト用ブラン
       expect(await repository.findById(999999)).toBeNull()
     })
 
-    it('登録日は登録日時（created_at）を日本時間の日付にしたもの', async () => {
-      const created = await repository.create(baseInput)
-      // UTC では 9/25 15:30 だが、日本時間では 9/26 0:30
-      await sql`UPDATE facility_pcs SET created_at = '2026-09-25T15:30:00Z' WHERE id = ${created.id}`
-      expect((await repository.findById(created.id))?.registeredOn).toBe('2026-09-26')
-      const [listed] = (await repository.list({ sort: 'facilityName', order: 'asc', page: 1 })).items
-      expect(listed.registeredOn).toBe('2026-09-26')
-      expect((await repository.listAll())[0].registeredOn).toBe('2026-09-26')
+    it('アカウント登録日は入力した日付を保存し、DB に登録した日時（created_at）とは関係ない', async () => {
+      const created = await repository.create({ ...baseInput, registeredOn: '2020-01-15' })
+      expect(created.registeredOn).toBe('2020-01-15')
+      expect((await repository.listAll())[0].registeredOn).toBe('2020-01-15')
+      const [row] = await sql`SELECT created_at > now() - interval '1 hour' AS recent FROM facility_pcs WHERE id = ${created.id}`
+      expect(row.recent).toBe(true)
     })
 
     it('同じ施設に同じPC名は登録できない', async () => {
@@ -77,12 +76,13 @@ describe.skipIf(!databaseUrl)('facilityPcRepository（Neon テスト用ブラン
       licenseKey: null,
       account: null,
       password: null,
+      registeredOn: null,
       remarks: null,
     })
 
     it('空欄の項目は null のまま保存・取得できる', async () => {
       const created = await repository.create(onlyNames('中央病院', 'PC-001'))
-      expect(await repository.findById(created.id)).toEqual({ ...onlyNames('中央病院', 'PC-001'), id: created.id, registeredOn: created.registeredOn })
+      expect(await repository.findById(created.id)).toEqual({ ...onlyNames('中央病院', 'PC-001'), id: created.id })
     })
 
     it('施設名かPC名が空欄の行は、重複チェックの対象外になる', async () => {
@@ -120,7 +120,7 @@ describe.skipIf(!databaseUrl)('facilityPcRepository（Neon テスト用ブラン
     it('内容を更新し、updated_at を進める', async () => {
       const created = await repository.create(baseInput)
       const updated = await repository.update(created.id, { ...baseInput, osVersion: 'Windows 11 24H2', remarks: 'メモ' })
-      expect(updated).toEqual({ ...baseInput, id: created.id, registeredOn: created.registeredOn, osVersion: 'Windows 11 24H2', remarks: 'メモ' })
+      expect(updated).toEqual({ ...baseInput, id: created.id, osVersion: 'Windows 11 24H2', remarks: 'メモ' })
 
       const [row] = await sql`SELECT updated_at > created_at AS advanced FROM facility_pcs WHERE id = ${created.id}`
       expect(row.advanced).toBe(true)
@@ -180,17 +180,15 @@ describe.skipIf(!databaseUrl)('facilityPcRepository（Neon テスト用ブラン
       expect(names(result.items)).toEqual(['A病院/PC-9', 'B病院/PC-2', 'C病院/PC-2'])
     })
 
-    describe('設置日・登録日での並べ替え', () => {
-      const withDate = async (facilityName: string, installedOn: string | null, createdAt: string) => {
-        const created = await repository.create({ ...baseInput, facilityName, pcName: 'PC-1', installedOn })
-        await sql`UPDATE facility_pcs SET created_at = ${createdAt} WHERE id = ${created.id}`
-      }
+    describe('設置日・アカウント登録日での並べ替え', () => {
+      const withDates = (facilityName: string, installedOn: string | null, registeredOn: string | null) =>
+        repository.create({ ...baseInput, facilityName, pcName: 'PC-1', installedOn, registeredOn })
 
       beforeEach(async () => {
-        await withDate('C病院', '2026-03-01', '2026-09-26T01:00:00Z')
-        await withDate('A病院', null, '2026-09-25T00:00:00Z')
-        await withDate('B病院', '2026-03-01', '2026-09-26T00:30:00Z')
-        await withDate('D病院', '2025-01-01', '2026-09-26T00:00:00Z')
+        await withDates('C病院', '2026-03-01', '2024-05-01')
+        await withDates('A病院', null, null)
+        await withDates('B病院', '2026-03-01', '2024-05-01')
+        await withDates('D病院', '2025-01-01', '2023-01-01')
       })
 
       it('設置日の昇順。同じ日付は施設名の昇順、空欄は最後', async () => {
@@ -203,11 +201,11 @@ describe.skipIf(!databaseUrl)('facilityPcRepository（Neon テスト用ブラン
         expect(result.items.map((item) => item.facilityName)).toEqual(['B病院', 'C病院', 'D病院', 'A病院'])
       })
 
-      it('登録日は同じ日でも登録した時刻の順に並ぶ', async () => {
+      it('アカウント登録日も、同じ日付は施設名の昇順、空欄は昇順・降順とも最後', async () => {
         const asc = await repository.list({ sort: 'registeredOn', order: 'asc', page: 1 })
-        expect(asc.items.map((item) => item.facilityName)).toEqual(['A病院', 'D病院', 'B病院', 'C病院'])
+        expect(asc.items.map((item) => item.facilityName)).toEqual(['D病院', 'B病院', 'C病院', 'A病院'])
         const desc = await repository.list({ sort: 'registeredOn', order: 'desc', page: 1 })
-        expect(desc.items.map((item) => item.facilityName)).toEqual(['C病院', 'B病院', 'D病院', 'A病院'])
+        expect(desc.items.map((item) => item.facilityName)).toEqual(['B病院', 'C病院', 'D病院', 'A病院'])
       })
     })
 

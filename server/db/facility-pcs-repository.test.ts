@@ -1,7 +1,12 @@
 import { neon } from '@neondatabase/serverless'
 import { config } from 'dotenv'
 import type { FacilityPcInput } from '../../shared/facility-pc-schema'
-import { createFacilityPcRepository, DuplicateFacilityPcError } from './facility-pcs-repository'
+import {
+  createFacilityPcRepository,
+  DuplicateFacilityPcError,
+  DuplicateTagError,
+  rethrowDuplicate as rethrowDuplicateForTest,
+} from './facility-pcs-repository'
 
 // 必ず .env.test（Neon のテスト用ブランチ）を読む。本番の .env は読まない
 config({ path: '.env.test', quiet: true })
@@ -10,6 +15,7 @@ const databaseUrl = process.env.DATABASE_URL
 const baseInput: FacilityPcInput = {
   facilityName: '中央病院',
   pcName: 'PC-001',
+  tag: null,
   installedOn: '2026-09-26',
   osVersion: 'Windows 11',
   officeType: 'Pro',
@@ -59,6 +65,27 @@ describe.skipIf(!databaseUrl)('facilityPcRepository（Neon テスト用ブラン
       await expect(repository.create(baseInput)).rejects.toBeInstanceOf(DuplicateFacilityPcError)
     })
 
+    it('Tag は大文字・小文字を区別せずに重複を禁止し、PC名の重複とは別のエラーにする', async () => {
+      await repository.create({ ...baseInput, tag: 'TAG-0001' })
+      const error = await repository.create({ ...baseInput, pcName: 'PC-002', tag: 'tag-0001' }).catch((e: unknown) => e)
+      expect(error).toBeInstanceOf(DuplicateTagError)
+      expect((error as Error).message).toBe('同じTagがすでに登録されています')
+
+      const pcError = await repository.create({ ...baseInput, tag: 'TAG-0002' }).catch((e: unknown) => e)
+      expect(pcError).toBeInstanceOf(DuplicateFacilityPcError)
+      expect((pcError as Error).message).toBe('同じ施設に同じPC名がすでに登録されています')
+    })
+
+    it('Tag が空欄の行はいくつでも登録できる', async () => {
+      await repository.create({ ...baseInput, tag: null })
+      await expect(repository.create({ ...baseInput, pcName: 'PC-002', tag: null })).resolves.toBeDefined()
+    })
+
+    it('Tag を保存・取得できる', async () => {
+      const created = await repository.create({ ...baseInput, tag: 'TAG-0001' })
+      expect((await repository.findById(created.id))?.tag).toBe('TAG-0001')
+    })
+
     it('別の施設なら同じPC名を登録できる', async () => {
       await repository.create(baseInput)
       await expect(repository.create({ ...baseInput, facilityName: '東病院' })).resolves.toBeDefined()
@@ -69,6 +96,7 @@ describe.skipIf(!databaseUrl)('facilityPcRepository（Neon テスト用ブラン
     const onlyNames = (facilityName: string | null, pcName: string | null): FacilityPcInput => ({
       facilityName,
       pcName,
+      tag: null,
       installedOn: null,
       osVersion: null,
       officeType: null,
@@ -113,6 +141,106 @@ describe.skipIf(!databaseUrl)('facilityPcRepository（Neon テスト用ブラン
       await repository.create(onlyNames('A病院', 'PC-1'))
       const result = await repository.list({ sort: 'facilityName', order: 'asc', page: 1 })
       expect(result.items.map((item) => item.pcName)).toEqual(['PC-1', null])
+    })
+  })
+
+  describe('取り込み（upsertMany / findTagIssues）', () => {
+    it('施設名＋PC名が一致すれば上書き、なければ追加し、件数を返す（1本の SQL）', async () => {
+      const existing = await repository.create({ ...baseInput, facilityName: 'A病院', pcName: 'PC-1', remarks: '古い' })
+      const result = await repository.upsertMany([
+        { ...baseInput, facilityName: 'A病院', pcName: 'PC-1', remarks: '新しい', tag: 'TAG-1' },
+        { ...baseInput, facilityName: 'B病院', pcName: 'PC-1' },
+        { ...baseInput, facilityName: 'C病院', pcName: null },
+      ])
+      expect(result).toEqual({ created: 2, updated: 1 })
+
+      const updated = await repository.findById(existing.id)
+      expect(updated).toMatchObject({ remarks: '新しい', tag: 'TAG-1', installedOn: '2026-09-26', registeredOn: '2026-04-01' })
+      expect(await repository.listAll()).toHaveLength(3)
+    })
+
+    it('上書きするとき、取り込む側が空欄の項目は既存の値を残す（値の入っている項目だけ上書きする）', async () => {
+      const existing = await repository.create({ ...baseInput, facilityName: 'A病院', pcName: 'PC-1', licenseKey: 'KEY-OLD', tag: 'TAG-OLD' })
+      await repository.upsertMany([
+        {
+          facilityName: 'A病院',
+          pcName: 'PC-1',
+          tag: null,
+          installedOn: null,
+          osVersion: 'Windows 12',
+          officeType: null,
+          officeVersion: null,
+          licenseKey: null,
+          account: null,
+          password: null,
+          registeredOn: null,
+          remarks: null,
+        },
+      ])
+      const { id: _, ...kept } = (await repository.findById(existing.id))!
+      const { id: __, ...before } = existing
+      expect(kept).toEqual({ ...before, osVersion: 'Windows 12' })
+    })
+
+    it('Excel に無い既存の行はそのまま残す', async () => {
+      await repository.create({ ...baseInput, facilityName: 'Z病院' })
+      await repository.upsertMany([{ ...baseInput, facilityName: 'A病院' }])
+      expect((await repository.listAll()).map((item) => item.facilityName)).toEqual(['A病院', 'Z病院'])
+    })
+
+    it('施設名かPC名が空欄の行は照合できないので、常に追加する', async () => {
+      await repository.upsertMany([{ ...baseInput, facilityName: 'A病院', pcName: null }])
+      const result = await repository.upsertMany([{ ...baseInput, facilityName: 'A病院', pcName: null }])
+      expect(result).toEqual({ created: 1, updated: 0 })
+    })
+
+    it('Tag が DB の「別の」データと重複する行を返す（同じ施設名＋PC名の行を上書きする場合は重複とみなさない）', async () => {
+      await repository.create({ ...baseInput, facilityName: 'A病院', pcName: 'PC-1', tag: 'TAG-1' })
+      const issues = await repository.findTagIssues([
+        { key: 0, input: { ...baseInput, facilityName: 'A病院', pcName: 'PC-1', tag: 'tag-1' } },
+        { key: 1, input: { ...baseInput, facilityName: 'B病院', pcName: 'PC-1', tag: 'TAG-X' } },
+        { key: 2, input: { ...baseInput, facilityName: 'A病院', pcName: null, tag: 'TAG-1' } },
+        { key: 3, input: { ...baseInput, facilityName: 'D病院', pcName: 'PC-1', tag: null } },
+      ])
+      // key 0 は同じ行（A病院/PC-1）の上書きなので重複なし。
+      // key 2 は PC名が空欄で照合できず追加になるため DB の TAG-1 と重複し、ファイル内でも key 0（tag-1）と重複する
+      expect(issues).toEqual([{ key: 2, duplicateOfKey: 0, existsInDb: true }])
+    })
+
+    it('ファイル内の Tag の重複も、DB と同じ PostgreSQL の lower() で判定し、先に出てきた行を返す', async () => {
+      // JavaScript の toLowerCase() では 'İ' → 'i̇' だが、PostgreSQL の lower() では 'i' になる（DB の重複禁止と同じ基準にする）
+      const issues = await repository.findTagIssues([
+        { key: 0, input: { ...baseInput, facilityName: 'A病院', tag: 'İ' } },
+        { key: 1, input: { ...baseInput, facilityName: 'B病院', tag: 'i' } },
+        { key: 2, input: { ...baseInput, facilityName: 'C病院', tag: 'TAG-1' } },
+        { key: 3, input: { ...baseInput, facilityName: 'D病院', tag: 'tag-1' } },
+        { key: 4, input: { ...baseInput, facilityName: 'E病院', tag: 'TAG-1' } },
+      ])
+      expect(issues).toEqual([
+        { key: 1, duplicateOfKey: 0, existsInDb: false },
+        { key: 3, duplicateOfKey: 2, existsInDb: false },
+        { key: 4, duplicateOfKey: 2, existsInDb: false },
+      ])
+    })
+
+    it('ファイル内の Tag 重複を取り除いた行は、DB の一意制約に引っかからずにアップサートできる', async () => {
+      const inputs = [
+        { ...baseInput, facilityName: 'A病院', tag: 'İ' },
+        { ...baseInput, facilityName: 'B病院', tag: 'i' },
+      ]
+      const issues = await repository.findTagIssues(inputs.map((input, key) => ({ key, input })))
+      const rejected = new Set(issues.map((issue) => issue.key))
+      await expect(repository.upsertMany(inputs.filter((_, key) => !rejected.has(key)))).resolves.toEqual({ created: 1, updated: 0 })
+    })
+
+    it('施設名＋PC名・Tag 以外の一意制約の違反（主キーなど）は、重複エラーに言い換えずにそのまま投げる', async () => {
+      const created = await repository.create(baseInput)
+      const error = await sql`INSERT INTO facility_pcs (id, facility_name) OVERRIDING SYSTEM VALUE VALUES (${created.id}, 'X')`.catch(
+        (e: unknown) => e,
+      )
+      expect(error).toMatchObject({ code: '23505' })
+      // 主キー違反を起こす経路は通常の登録には無いため、ここでは判定関数を直接確かめる
+      expect(() => rethrowDuplicateForTest(error)).toThrow(error as Error)
     })
   })
 
@@ -214,6 +342,23 @@ describe.skipIf(!databaseUrl)('facilityPcRepository（Neon テスト用ブラン
       const result = await repository.list({ q: '中央', sort: 'facilityName', order: 'asc', page: 1 })
       expect(names(result.items)).toEqual(['中央クリニック/PC-1', '中央病院/PC-1'])
       expect(result.total).toBe(2)
+    })
+
+    it('検索語は施設名か Tag のどちらかに含まれていれば見つかる', async () => {
+      await repository.create({ ...baseInput, facilityName: '中央病院', pcName: 'PC-1', tag: 'ZZ-1' })
+      await repository.create({ ...baseInput, facilityName: '東病院', pcName: 'PC-1', tag: '中央-99' })
+      await repository.create({ ...baseInput, facilityName: '西病院', pcName: 'PC-1', tag: null })
+      const result = await repository.list({ q: '中央', sort: 'facilityName', order: 'asc', page: 1 })
+      expect(names(result.items)).toEqual(['中央病院/PC-1', '東病院/PC-1'])
+      expect(result.total).toBe(2)
+    })
+
+    it.each(['asc', 'desc'] as const)('Tag で並べ替えると、空欄は %s でも最後', async (order) => {
+      await repository.create({ ...baseInput, facilityName: 'A病院', tag: null })
+      await repository.create({ ...baseInput, facilityName: 'B病院', tag: 'T-2' })
+      await repository.create({ ...baseInput, facilityName: 'C病院', tag: 'T-1' })
+      const result = await repository.list({ sort: 'tag', order, page: 1 })
+      expect(result.items.map((item) => item.tag)).toEqual(order === 'asc' ? ['T-1', 'T-2', null] : ['T-2', 'T-1', null])
     })
 
     it('検索語の % と _ は普通の文字として扱う', async () => {

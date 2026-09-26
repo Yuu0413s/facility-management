@@ -16,6 +16,7 @@ const saved: FacilityPc = {
   id: 7,
   facilityName: '中央病院',
   pcName: 'PC-001',
+  tag: 'TAG-0001',
   installedOn: '2026-09-26',
   osVersion: 'Windows 11',
   officeType: 'H&B',
@@ -47,6 +48,7 @@ const fillAll = async () => {
   const user = userEvent.setup()
   await user.type(screen.getByLabelText('施設名'), ' 中央病院 ')
   await user.type(screen.getByLabelText('PC名'), 'PC-001')
+  await user.type(screen.getByLabelText('Tag'), ' TAG-0001 ')
   await user.type(screen.getByLabelText('設置日'), '20260926')
   await user.type(screen.getByLabelText('OSバージョン'), 'Windows 11')
   await user.selectOptions(screen.getByLabelText('Office種類'), 'H&B')
@@ -99,6 +101,7 @@ describe('FacilityPcFormPage（新規登録）', () => {
     expect(createFacilityPc).toHaveBeenCalledWith({
       facilityName: '中央病院',
       pcName: 'PC-001',
+      tag: null,
       installedOn: null,
       osVersion: null,
       officeType: null,
@@ -151,6 +154,20 @@ describe('FacilityPcFormPage（新規登録）', () => {
     await user.type(screen.getByLabelText('設置日'), '２０２６０９２６')
     await user.click(screen.getByRole('button', { name: '登録する' }))
     expect(createFacilityPc).toHaveBeenCalledWith(expect.objectContaining({ installedOn: '2026-09-26' }))
+  })
+
+  it('Tag の入力欄は「PC名」の次にある', () => {
+    renderPage('/new')
+    const labels = Array.from(document.querySelectorAll('label')).map((label) => label.textContent)
+    expect(labels.slice(0, 3)).toEqual(['施設名', 'PC名', 'Tag'])
+  })
+
+  it('Tag の重複エラー（409）はサーバーのメッセージを表示する', async () => {
+    vi.mocked(createFacilityPc).mockRejectedValue(new ApiError(409, '同じTagがすでに登録されています'))
+    renderPage('/new')
+    const user = await fillAll()
+    await user.click(screen.getByRole('button', { name: '登録する' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('同じTagがすでに登録されています')
   })
 
   it('アカウント登録日は「パスワード」と「備考」の間にあり、設置日と同じく yyyymmdd で入力しカレンダーでも選べる', async () => {
@@ -246,7 +263,7 @@ describe('FacilityPcFormPage（編集）', () => {
     renderPage('/edit/7')
     await screen.findByDisplayValue('中央病院')
     const user = userEvent.setup()
-    for (const label of ['施設名', 'PC名', '設置日', 'OSバージョン', 'Key', 'アカウント', 'パスワード', 'アカウント登録日', '備考']) {
+    for (const label of ['施設名', 'PC名', 'Tag', '設置日', 'OSバージョン', 'Key', 'アカウント', 'パスワード', 'アカウント登録日', '備考']) {
       await user.clear(screen.getByLabelText(label))
     }
     await user.selectOptions(screen.getByLabelText('Office種類'), '')

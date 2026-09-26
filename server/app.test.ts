@@ -1,11 +1,12 @@
 import { inspect } from 'node:util'
 import type { FacilityPc, FacilityPcInput } from '../shared/facility-pc-schema'
 import { createApp } from './app'
-import { DuplicateFacilityPcError, type FacilityPcRepository } from './db/facility-pcs-repository'
+import { DuplicateFacilityPcError, DuplicateTagError, type FacilityPcRepository } from './db/facility-pcs-repository'
 
 const input: FacilityPcInput = {
   facilityName: '中央病院',
   pcName: 'PC-001',
+  tag: null,
   installedOn: '2026-09-26',
   osVersion: 'Windows 11',
   officeType: 'Pro',
@@ -28,6 +29,8 @@ const setup = () => {
     create: vi.fn(),
     update: vi.fn(),
     delete: vi.fn(),
+    findTagIssues: vi.fn(),
+    upsertMany: vi.fn(),
   } satisfies Record<keyof FacilityPcRepository, unknown>
   const createRepository = vi.fn(() => repository as FacilityPcRepository)
   const app = createApp({ createRepository })
@@ -58,7 +61,7 @@ describe('GET /api/facility-pcs', () => {
     expect(repository.list).toHaveBeenCalledWith({ q: undefined, sort: 'facilityName', order: 'asc', page: 1 })
   })
 
-  it.each(['installedOn', 'registeredOn'])('sort=%s で並べ替えを依頼できる', async (sort) => {
+  it.each(['tag', 'installedOn', 'registeredOn'])('sort=%s で並べ替えを依頼できる', async (sort) => {
     const { repository, request } = setup()
     repository.list.mockResolvedValue({ items: [], total: 0, page: 1, perPage: 50 })
     await request(`/api/facility-pcs?sort=${sort}`)
@@ -86,6 +89,52 @@ describe('キャッシュ', () => {
     repository.listAll.mockResolvedValue([saved])
     const res = await request('/api/facility-pcs/export')
     expect(res.headers.get('Cache-Control')).toBe('no-store')
+  })
+})
+
+describe('POST /api/facility-pcs/import', () => {
+  it('行データを受け取って取り込み、件数とエラー行を返す', async () => {
+    const { repository, send } = setup()
+    repository.findTagIssues.mockResolvedValue([])
+    repository.upsertMany.mockResolvedValue({ created: 1, updated: 0 })
+    const res = await send('POST', '/api/facility-pcs/import', {
+      rows: [
+        { rowNumber: 2, values: { facilityName: 'A病院' } },
+        { rowNumber: 3, values: { officeType: 'Home' } },
+      ],
+    })
+    expect(res.status).toBe(200)
+    expect(await res.json()).toEqual({
+      created: 1,
+      updated: 0,
+      errors: [{ rowNumber: 3, issues: [{ field: 'officeType', message: '選択肢から選んでください' }] }],
+    })
+  })
+
+  it('1,000行を超えるリクエストは 400', async () => {
+    const { send } = setup()
+    const rows = Array.from({ length: 1001 }, (_, index) => ({ rowNumber: index + 2, values: { facilityName: 'A' } }))
+    const res = await send('POST', '/api/facility-pcs/import', { rows })
+    expect(res.status).toBe(400)
+    expect(((await res.json()) as { message: string }).message).toBe('一度に取り込めるのは1000行までです')
+  })
+
+  it('行番号が重複しているリクエストは 400（行番号でエラー行を伝えるため）', async () => {
+    const { send } = setup()
+    const res = await send('POST', '/api/facility-pcs/import', {
+      rows: [
+        { rowNumber: 2, values: { facilityName: 'A' } },
+        { rowNumber: 2, values: { facilityName: 'B' } },
+      ],
+    })
+    expect(res.status).toBe(400)
+    expect(((await res.json()) as { message: string }).message).toBe('行番号が重複しています')
+  })
+
+  it('行が無い・形が違うリクエストは 400', async () => {
+    const { send } = setup()
+    expect((await send('POST', '/api/facility-pcs/import', { rows: [] })).status).toBe(400)
+    expect((await send('POST', '/api/facility-pcs/import', { foo: 1 })).status).toBe(400)
   })
 })
 
@@ -172,6 +221,14 @@ describe('POST /api/facility-pcs', () => {
     const res = await send('POST', '/api/facility-pcs', input)
     expect(res.status).toBe(409)
     expect(((await res.json()) as { message: string }).message).toBe('同じ施設に同じPC名がすでに登録されています')
+  })
+
+  it('Tag の重複は 409 で、Tag の重複だとわかるメッセージを返す', async () => {
+    const { repository, send } = setup()
+    repository.create.mockRejectedValue(new DuplicateTagError())
+    const res = await send('POST', '/api/facility-pcs', input)
+    expect(res.status).toBe(409)
+    expect(((await res.json()) as { message: string }).message).toBe('同じTagがすでに登録されています')
   })
 
   it('想定外のエラーは 500 で、レスポンスにもログにも詳細（接続文字列など）を出さない', async () => {

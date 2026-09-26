@@ -6,6 +6,7 @@ type DisplayField = keyof FacilityPcInput
 export const FACILITY_PC_LABELS = {
   facilityName: '施設名',
   pcName: 'PC名',
+  tag: 'Tag',
   installedOn: '設置日',
   osVersion: 'OSバージョン',
   officeType: 'Office種類',

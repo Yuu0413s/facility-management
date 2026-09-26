@@ -2,7 +2,8 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes, useLocation, useNavigate } from 'react-router'
 import type { FacilityPc, FacilityPcPage } from '../../shared/facility-pc-schema'
-import { ApiError, deleteFacilityPc, fetchFacilityPcPage } from '../api/facility-pcs-client'
+import { ApiError, deleteFacilityPc, fetchFacilityPcPage, importFacilityPcs } from '../api/facility-pcs-client'
+import { readFacilityPcWorkbook } from '../lib/import-excel'
 import { exportFacilityPcsToExcel } from '../lib/export-excel'
 import { FacilityPcListPage } from './FacilityPcListPage'
 
@@ -10,13 +11,16 @@ vi.mock('../api/facility-pcs-client', async (importOriginal) => ({
   ...(await importOriginal<object>()),
   fetchFacilityPcPage: vi.fn(),
   deleteFacilityPc: vi.fn(),
+  importFacilityPcs: vi.fn(),
 }))
+vi.mock('../lib/import-excel', () => ({ readFacilityPcWorkbook: vi.fn() }))
 vi.mock('../lib/export-excel', () => ({ exportFacilityPcsToExcel: vi.fn() }))
 
 const pc: FacilityPc = {
   id: 7,
   facilityName: '中央病院',
   pcName: 'PC-001',
+  tag: null,
   installedOn: '2026-09-26',
   osVersion: 'Windows 11',
   officeType: 'H&B',
@@ -95,6 +99,7 @@ describe('FacilityPcListPage', () => {
   })
 
   it.each([
+    ['Tag', 'tag'],
     ['設置日', 'installedOn'],
     ['アカウント登録日', 'registeredOn'],
   ] as const)('%s の見出しを押すとその列の昇順で並べ替え、もう一度押すと降順になる', async (label, sort) => {
@@ -105,6 +110,15 @@ describe('FacilityPcListPage', () => {
     expect(await header()).toHaveAttribute('aria-sort', 'ascending')
     await userEvent.click(within(await header()).getByRole('button'))
     await waitFor(() => expect(lastQuery()).toMatchObject({ sort, order: 'desc' }))
+  })
+
+  it('「Tag」の列を「PC名」の次に表示する', async () => {
+    vi.mocked(fetchFacilityPcPage).mockResolvedValue(pageOf([{ ...pc, tag: 'TAG-0001' }]))
+    renderPage()
+    const row = await screen.findByRole('row', { name: /中央病院/ })
+    expect(within(row).getByText('TAG-0001')).toBeInTheDocument()
+    const headers = screen.getAllByRole('columnheader').map((header) => header.textContent?.replace(/[▲▼↕]/g, '').trim())
+    expect(headers.slice(0, 3)).toEqual(['施設名', 'PC名', 'Tag'])
   })
 
   it('「アカウント登録日」の列を「パスワード」と「備考」の間に表示する', async () => {
@@ -151,14 +165,14 @@ describe('FacilityPcListPage', () => {
 
   it('施設名で検索すると1ページ目から取得し直す', async () => {
     renderPage('/?page=3')
-    await userEvent.type(await screen.findByRole('searchbox', { name: '施設名で検索' }), '  中央 ')
+    await userEvent.type(await screen.findByRole('searchbox', { name: '施設名・Tagで検索' }), '  中央 ')
     await userEvent.click(screen.getByRole('button', { name: '検索' }))
     await waitFor(() => expect(lastQuery()).toEqual({ q: '中央', sort: 'facilityName', order: 'asc', page: 1 }))
   })
 
   it('ブラウザの「戻る」で検索条件が戻ったら、検索欄の文字も戻す', async () => {
     renderPage('/?q=' + encodeURIComponent('中央'))
-    const searchbox = await screen.findByRole('searchbox', { name: '施設名で検索' })
+    const searchbox = await screen.findByRole('searchbox', { name: '施設名・Tagで検索' })
     expect(searchbox).toHaveValue('中央')
 
     await userEvent.clear(searchbox)
@@ -168,7 +182,7 @@ describe('FacilityPcListPage', () => {
 
     await userEvent.click(screen.getByRole('button', { name: 'ブラウザの戻る' }))
     await waitFor(() => expect(lastQuery()).toMatchObject({ q: '中央' }))
-    expect(screen.getByRole('searchbox', { name: '施設名で検索' })).toHaveValue('中央')
+    expect(screen.getByRole('searchbox', { name: '施設名・Tagで検索' })).toHaveValue('中央')
   })
 
   it('次のページへ移動できる', async () => {
@@ -183,6 +197,7 @@ describe('FacilityPcListPage', () => {
       id: 8,
       facilityName: '西病院',
       pcName: null,
+      tag: null,
       installedOn: null,
       osVersion: null,
       officeType: null,
@@ -240,6 +255,90 @@ describe('FacilityPcListPage', () => {
     renderPage()
     await userEvent.click(await screen.findByRole('link', { name: '新規登録' }))
     expect(screen.getByText('登録ページ')).toBeInTheDocument()
+  })
+
+  describe('Excel取り込み', () => {
+    const file = () => new File(['dummy'], '施設PC一覧_20260926.xlsx', { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+    const upload = async () => userEvent.upload(await screen.findByLabelText('取り込む Excel ファイル'), file())
+
+    beforeEach(() => {
+      vi.mocked(readFacilityPcWorkbook).mockReset()
+      vi.mocked(importFacilityPcs).mockReset()
+    })
+
+    it('ボタンを押すとファイルの選択を開く', async () => {
+      renderPage()
+      const input = (await screen.findByLabelText('取り込む Excel ファイル')) as HTMLInputElement
+      const clickSpy = vi.spyOn(input, 'click')
+      await userEvent.click(screen.getByRole('button', { name: 'Excel取り込み' }))
+      expect(clickSpy).toHaveBeenCalled()
+      expect(input).toHaveAttribute('accept', '.xlsx')
+    })
+
+    it('確認で OK すると取り込み、件数とエラー行（行番号と項目名付きの理由）を表示して一覧を取得し直す', async () => {
+      vi.spyOn(window, 'confirm').mockReturnValue(true)
+      vi.mocked(readFacilityPcWorkbook).mockResolvedValue({
+        rows: [{ rowNumber: 2, values: { facilityName: 'A病院' } }, { rowNumber: 4, values: { facilityName: 'B病院' } }],
+        skipped: 3,
+        errors: [{ rowNumber: 3, issues: [{ field: 'installedOn', message: '日付は yyyy/mm/dd か yyyymmdd の形で入力してください' }] }],
+      })
+      vi.mocked(importFacilityPcs).mockResolvedValue({
+        created: 1,
+        updated: 0,
+        errors: [{ rowNumber: 4, issues: [{ field: null, message: '2行目と施設名・PC名が重複しています' }] }],
+      })
+      renderPage()
+      await upload()
+
+      expect(window.confirm).toHaveBeenCalledWith(
+        '「施設PC一覧_20260926.xlsx」を取り込みます。同じ施設名＋PC名のデータは、値の入っている項目だけ上書きされます（空欄の項目は今の値が残ります）。よろしいですか？',
+      )
+      expect(importFacilityPcs).toHaveBeenCalledWith([
+        { rowNumber: 2, values: { facilityName: 'A病院' } },
+        { rowNumber: 4, values: { facilityName: 'B病院' } },
+      ])
+      const status = await screen.findByRole('status')
+      expect(status).toHaveTextContent('追加 1件・上書き 0件・読み飛ばし（空行） 3件・エラー 2件')
+      const errorRows = within(status).getAllByRole('row').slice(1).map((row) => row.textContent)
+      expect(errorRows).toEqual([
+        '3行目設置日: 日付は yyyy/mm/dd か yyyymmdd の形で入力してください',
+        '4行目2行目と施設名・PC名が重複しています',
+      ])
+      await waitFor(() => expect(fetchFacilityPcPage).toHaveBeenCalledTimes(2))
+    })
+
+    it('確認でキャンセルしたら何もしない', async () => {
+      vi.spyOn(window, 'confirm').mockReturnValue(false)
+      renderPage()
+      await upload()
+      expect(readFacilityPcWorkbook).not.toHaveBeenCalled()
+      expect(importFacilityPcs).not.toHaveBeenCalled()
+    })
+
+    it('送れる行が無ければ API を呼ばずに結果だけ表示する', async () => {
+      vi.spyOn(window, 'confirm').mockReturnValue(true)
+      vi.mocked(readFacilityPcWorkbook).mockResolvedValue({ rows: [], skipped: 5, errors: [] })
+      renderPage()
+      await upload()
+      expect(await screen.findByRole('status')).toHaveTextContent('追加 0件・上書き 0件・読み飛ばし（空行） 5件・エラー 0件')
+      expect(importFacilityPcs).not.toHaveBeenCalled()
+    })
+
+    it('ファイルを読めないときや通信に失敗したときは、理由を表示する', async () => {
+      vi.spyOn(window, 'confirm').mockReturnValue(true)
+      vi.mocked(readFacilityPcWorkbook).mockRejectedValue(new Error('Excel ファイル（.xlsx）として読み込めませんでした'))
+      renderPage()
+      await upload()
+      expect(await screen.findByRole('alert')).toHaveTextContent('Excel ファイル（.xlsx）として読み込めませんでした')
+      expect(screen.getByRole('button', { name: 'Excel取り込み' })).toBeEnabled()
+    })
+
+    it('同じファイルを続けて選び直せる（選択を毎回空に戻す）', async () => {
+      vi.spyOn(window, 'confirm').mockReturnValue(false)
+      renderPage()
+      await upload()
+      expect(((await screen.findByLabelText('取り込む Excel ファイル')) as HTMLInputElement).value).toBe('')
+    })
   })
 
   describe('Excel出力メニュー', () => {

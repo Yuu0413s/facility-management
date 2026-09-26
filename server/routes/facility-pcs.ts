@@ -1,8 +1,9 @@
 import { zValidator } from '@hono/zod-validator'
 import { Hono } from 'hono'
 import { z } from 'zod'
-import { facilityPcInputSchema, listQuerySchema } from '../../shared/facility-pc-schema'
-import { DuplicateFacilityPcError, type FacilityPcRepository } from '../db/facility-pcs-repository'
+import { facilityPcInputSchema, importRequestSchema, listQuerySchema } from '../../shared/facility-pc-schema'
+import { DuplicateError, type FacilityPcRepository } from '../db/facility-pcs-repository'
+import { importFacilityPcs } from '../import-facility-pcs'
 
 export type Bindings = {
   DATABASE_URL: string
@@ -24,6 +25,12 @@ const validate = <Target extends 'json' | 'query', Schema extends z.ZodType>(tar
     }
   })
 
+// 取り込みのリクエストは行数の上限などリクエスト全体の誤りなので、最初の理由をそのままメッセージにする
+// （各行の中身の誤りは 400 にせず、行ごとのエラーとして結果に含める）
+const validateImportRequest = zValidator('json', importRequestSchema, (result, c) => {
+  if (!result.success) return c.json({ message: result.error.issues[0]?.message ?? '取り込みのデータが正しくありません' }, 400)
+})
+
 // id 列は INTEGER。数字以外・0 以下・INTEGER の範囲外は DB に問い合わせるまでもなく存在しない
 const MAX_ID = 2_147_483_647
 const parseId = (raw: string) => {
@@ -36,7 +43,7 @@ const withDuplicateAs409 = async (c: { json: (body: unknown, status: 409) => Res
   try {
     return await action()
   } catch (error) {
-    if (error instanceof DuplicateFacilityPcError) return c.json({ message: error.message }, 409)
+    if (error instanceof DuplicateError) return c.json({ message: error.message }, 409)
     throw error
   }
 }
@@ -60,6 +67,10 @@ export const createFacilityPcRoutes = (createRepository: (databaseUrl: string) =
     })
     .post('/', validate('json', facilityPcInputSchema), (c) =>
       withDuplicateAs409(c, async () => c.json(await c.var.repository.create(c.req.valid('json')), 201)),
+    )
+    // Excel の取り込み。正しい行だけを取り込み、エラーの行は行番号と理由を返す
+    .post('/import', validateImportRequest, (c) =>
+      withDuplicateAs409(c, async () => c.json(await importFacilityPcs(c.var.repository, c.req.valid('json').rows))),
     )
     .put('/:id', validate('json', facilityPcInputSchema), (c) =>
       withDuplicateAs409(c, async () => {

@@ -6,7 +6,7 @@ export const REMARKS_MAX_LENGTH = 500
 export const DATE_INPUT_FORMAT_MESSAGE = 'yyyymmdd（8桁の数字）で入力してください'
 export const PER_PAGE = 50
 // 並べ替えできる列。SQL の列名に対応づけるので、ここに無い値は受け付けない
-export const SORT_KEYS = ['facilityName', 'pcName', 'installedOn', 'registeredOn'] as const
+export const SORT_KEYS = ['facilityName', 'pcName', 'tag', 'installedOn', 'registeredOn'] as const
 
 // 全項目が任意入力。空白だけ・未送信の項目は null として保存する
 const blankToNull = (value: unknown) => (value === undefined || (typeof value === 'string' && value.trim() === '') ? null : value)
@@ -43,6 +43,8 @@ export const facilityPcInputSchema = z
   .object({
     facilityName: optionalText,
     pcName: optionalText,
+    // 資産管理用の Tag（自由入力）。重複の禁止は DB の制約で行う（大文字・小文字を区別しない）
+    tag: optionalText,
     installedOn: optional(isoDate),
     osVersion: optionalText,
     officeType: optional(z.enum(OFFICE_TYPES, '選択肢から選んでください')),
@@ -74,3 +76,22 @@ export type SortOrder = z.infer<typeof listQuerySchema>['order']
 export type ListQuery = { q?: string; sort: SortKey; order: SortOrder; page: number }
 export type FacilityPc = FacilityPcInput & { id: number }
 export type FacilityPcPage = { items: FacilityPc[]; total: number; page: number; perPage: number }
+
+// ---- Excel 取り込み ----
+export const IMPORT_MAX_ROWS = 1000
+
+// 各行の値はここでは形だけ確かめ、中身は行ごとに facilityPcInputSchema で検証する（1行の誤りでリクエスト全体を弾かないため）
+export const importRequestSchema = z.object({
+  rows: z
+    .array(z.object({ rowNumber: z.number().int().min(1), values: z.record(z.string(), z.unknown()) }))
+    .min(1, '取り込む行がありません')
+    .max(IMPORT_MAX_ROWS, `一度に取り込めるのは${IMPORT_MAX_ROWS}行までです`)
+    // エラー行を行番号で伝えるため、行番号は重複させない
+    .refine((rows) => new Set(rows.map((row) => row.rowNumber)).size === rows.length, '行番号が重複しています'),
+})
+
+export type ImportRow = z.infer<typeof importRequestSchema>['rows'][number]
+// field が null のものは、特定の項目に属さない理由（ファイル内の重複など）
+export type ImportIssue = { field: keyof FacilityPcInput | null; message: string }
+export type ImportRowError = { rowNumber: number; issues: ImportIssue[] }
+export type ImportResult = { created: number; updated: number; errors: ImportRowError[] }

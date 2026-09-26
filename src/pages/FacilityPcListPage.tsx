@@ -4,16 +4,18 @@ import {
   listQuerySchema,
   type FacilityPc,
   type FacilityPcPage,
+  type ImportRowError,
   type ListQuery,
   type SortKey,
   type SortOrder,
 } from '../../shared/facility-pc-schema'
-import { deleteFacilityPc, fetchFacilityPcPage } from '../api/facility-pcs-client'
+import { deleteFacilityPc, fetchFacilityPcPage, importFacilityPcs } from '../api/facility-pcs-client'
 import { Pagination } from '../components/Pagination'
 import { SecretCell } from '../components/SecretCell'
 import { toDisplayDate } from '../lib/date'
 import { formatProductKey } from '../lib/product-key'
 import { exportFacilityPcsToExcel, type ExportKind } from '../lib/export-excel'
+import { readFacilityPcWorkbook } from '../lib/import-excel'
 import { FACILITY_PC_LABELS as LABELS } from '../lib/facility-pc-labels'
 
 const DEFAULT_QUERY: ListQuery = { sort: 'facilityName', order: 'asc', page: 1 }
@@ -42,6 +44,9 @@ export function FacilityPcListPage() {
   const [error, setError] = useState<string | null>(null)
   const [reloadCount, setReloadCount] = useState(0)
   const [isExporting, setIsExporting] = useState(false)
+  const [isImporting, setIsImporting] = useState(false)
+  const [importSummary, setImportSummary] = useState<ImportSummary | null>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     // 条件を素早く切り替えたとき、古いリクエストの結果で上書きしないようにする
@@ -101,6 +106,29 @@ export function FacilityPcListPage() {
     }
   }
 
+  const handleImportFile = async (file: File) => {
+    if (!window.confirm(`「${file.name}」を取り込みます。同じ施設名＋PC名のデータは、値の入っている項目だけ上書きされます（空欄の項目は今の値が残ります）。よろしいですか？`)) return
+    setIsImporting(true)
+    setError(null)
+    setImportSummary(null)
+    try {
+      const read = await readFacilityPcWorkbook(await file.arrayBuffer())
+      const result = read.rows.length === 0 ? { created: 0, updated: 0, errors: [] } : await importFacilityPcs(read.rows)
+      setImportSummary({
+        created: result.created,
+        updated: result.updated,
+        skipped: read.skipped,
+        // 読み取りの時点で分かった誤りと、サーバーで分かった誤りを、行番号の順に並べる
+        errors: [...read.errors, ...result.errors].sort((a, b) => a.rowNumber - b.rowNumber),
+      })
+      setReloadCount((count) => count + 1)
+    } catch (e) {
+      setError(errorMessage(e))
+    } finally {
+      setIsImporting(false)
+    }
+  }
+
   const returnTo = `/?${searchParams}`
 
   return (
@@ -108,6 +136,22 @@ export function FacilityPcListPage() {
       <header className="page-header">
         <h1>施設PC一覧</h1>
         <div className="actions">
+          <button type="button" onClick={() => fileInputRef.current?.click()} disabled={isImporting}>
+            {isImporting ? '取り込み中…' : 'Excel取り込み'}
+          </button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".xlsx"
+            aria-label="取り込む Excel ファイル"
+            className="visually-hidden"
+            onChange={(event) => {
+              const file = event.target.files?.[0]
+              // 同じファイルを続けて選び直しても change が起きるよう、選択を毎回空に戻す
+              event.target.value = ''
+              if (file) void handleImportFile(file)
+            }}
+          />
           <ExportMenu isExporting={isExporting} onSelect={handleExport} />
           <Link className="button primary" to="/new" state={{ returnTo }}>
             新規登録
@@ -118,8 +162,8 @@ export function FacilityPcListPage() {
       <form className="search" role="search" onSubmit={handleSearch}>
         <input
           type="search"
-          aria-label="施設名で検索"
-          placeholder="施設名で検索"
+          aria-label="施設名・Tagで検索"
+          placeholder="施設名・Tagで検索"
           value={keyword}
           onChange={(event) => setKeyword(event.target.value)}
         />
@@ -132,6 +176,8 @@ export function FacilityPcListPage() {
         </p>
       )}
 
+      {importSummary && <ImportSummaryPanel summary={importSummary} onClose={() => setImportSummary(null)} />}
+
       {!result && !error && <p>読み込み中…</p>}
 
       {result && (
@@ -142,6 +188,7 @@ export function FacilityPcListPage() {
                 <tr>
                   <SortableHeader column="facilityName" sort={sort} order={order} onSort={updateQuery} />
                   <SortableHeader column="pcName" sort={sort} order={order} onSort={updateQuery} />
+                  <SortableHeader column="tag" sort={sort} order={order} onSort={updateQuery} />
                   <SortableHeader column="installedOn" sort={sort} order={order} onSort={updateQuery} />
                   <th>{LABELS.osVersion}</th>
                   <th>{LABELS.officeType}</th>
@@ -157,7 +204,7 @@ export function FacilityPcListPage() {
               <tbody>
                 {result.items.length === 0 ? (
                   <tr>
-                    <td colSpan={12} className="empty">
+                    <td colSpan={13} className="empty">
                       登録されたデータはありません
                     </td>
                   </tr>
@@ -166,6 +213,7 @@ export function FacilityPcListPage() {
                     <tr key={pc.id}>
                       <td>{pc.facilityName}</td>
                       <td>{pc.pcName}</td>
+                      <td>{pc.tag}</td>
                       <td>{toDisplayDate(pc.installedOn)}</td>
                       <td>{pc.osVersion}</td>
                       <td>{pc.officeType}</td>
@@ -298,5 +346,48 @@ function SortableHeader({
         </span>
       </button>
     </th>
+  )
+}
+
+type ImportSummary = { created: number; updated: number; skipped: number; errors: ImportRowError[] }
+
+function ImportSummaryPanel({ summary, onClose }: { summary: ImportSummary; onClose: () => void }) {
+  const { created, updated, skipped, errors } = summary
+  return (
+    <section className="import-summary" role="status">
+      <div className="import-summary-header">
+        <p>
+          取り込みが完了しました：追加 {created}件・上書き {updated}件・読み飛ばし（空行） {skipped}件・エラー {errors.length}件
+        </p>
+        <button type="button" onClick={onClose}>
+          閉じる
+        </button>
+      </div>
+      {errors.length > 0 && (
+        <>
+          <p className="error">次の行は取り込めませんでした。Excel を直して、もう一度取り込んでください。</p>
+          <table>
+            <thead>
+              <tr>
+                <th>行</th>
+                <th>理由</th>
+              </tr>
+            </thead>
+            <tbody>
+              {errors.map(({ rowNumber, issues }) => (
+                <tr key={rowNumber}>
+                  <td>{rowNumber}行目</td>
+                  <td>
+                    {issues.map(({ field, message }) => (
+                      <div key={`${field}-${message}`}>{field ? `${LABELS[field]}: ${message}` : message}</div>
+                    ))}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </>
+      )}
+    </section>
   )
 }

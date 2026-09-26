@@ -10,7 +10,7 @@ const input: FacilityPcInput = {
   osVersion: 'Windows 11',
   officeType: 'Pro',
   officeVersion: '2021',
-  licenseKey: 'KEY-1',
+  licenseKey: 'ABCDE12345FGHIJ67890KLMNO',
   account: 'user1',
   password: 'secret',
   remarks: null,
@@ -57,7 +57,14 @@ describe('GET /api/facility-pcs', () => {
     expect(repository.list).toHaveBeenCalledWith({ q: undefined, sort: 'facilityName', order: 'asc', page: 1 })
   })
 
-  it('施設名・PC名以外での並べ替えは 400', async () => {
+  it.each(['installedOn', 'registeredOn'])('sort=%s で並べ替えを依頼できる', async (sort) => {
+    const { repository, request } = setup()
+    repository.list.mockResolvedValue({ items: [], total: 0, page: 1, perPage: 50 })
+    await request(`/api/facility-pcs?sort=${sort}`)
+    expect(repository.list).toHaveBeenCalledWith({ q: undefined, sort, order: 'asc', page: 1 })
+  })
+
+  it('決められた列以外での並べ替えは 400', async () => {
     const { repository, request } = setup()
     const res = await request('/api/facility-pcs?sort=password')
     expect(res.status).toBe(400)
@@ -121,6 +128,13 @@ describe('POST /api/facility-pcs', () => {
     const res = await send('POST', '/api/facility-pcs', { ...input, facilityName: ' 中央病院 ', remarks: '' })
     expect(res.status).toBe(201)
     expect(await res.json()).toEqual(saved)
+    expect(repository.create).toHaveBeenCalledWith(input)
+  })
+
+  it('Key はハイフンを除いて大文字にしてから保存する', async () => {
+    const { repository, send } = setup()
+    repository.create.mockResolvedValue(saved)
+    await send('POST', '/api/facility-pcs', { ...input, licenseKey: 'abcde-12345-fghij-67890-klmno' })
     expect(repository.create).toHaveBeenCalledWith(input)
   })
 

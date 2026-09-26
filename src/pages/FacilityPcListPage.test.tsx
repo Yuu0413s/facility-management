@@ -21,7 +21,7 @@ const pc: FacilityPc = {
   osVersion: 'Windows 11',
   officeType: 'H&B',
   officeVersion: '2021',
-  licenseKey: 'KEY-SECRET',
+  licenseKey: 'ABCDE12345FGHIJ67890KLMNO',
   account: 'user1',
   password: 'PASSWORD-SECRET',
   remarks: 'メモ',
@@ -82,8 +82,29 @@ describe('FacilityPcListPage', () => {
     for (const text of ['中央病院', 'PC-001', '2026/09/26', 'Windows 11', 'H&B', '2021', 'user1', '2026/09/20', 'メモ']) {
       expect(within(row).getByText(text)).toBeInTheDocument()
     }
-    expect(within(row).queryByText('KEY-SECRET')).not.toBeInTheDocument()
+    expect(within(row).queryByText('ABCDE12345FGHIJ67890KLMNO')).not.toBeInTheDocument()
+    expect(within(row).queryByText('ABCDE-12345-FGHIJ-67890-KLMNO')).not.toBeInTheDocument()
     expect(within(row).queryByText('PASSWORD-SECRET')).not.toBeInTheDocument()
+  })
+
+  it('Key は表示ボタンを押すと5桁ごとにハイフンを入れて表示する', async () => {
+    renderPage()
+    const row = await screen.findByRole('row', { name: /中央病院/ })
+    await userEvent.click(within(row).getByRole('button', { name: 'Keyを表示' }))
+    expect(within(row).getByText('ABCDE-12345-FGHIJ-67890-KLMNO')).toBeInTheDocument()
+  })
+
+  it.each([
+    ['設置日', 'installedOn'],
+    ['登録日', 'registeredOn'],
+  ] as const)('%s の見出しを押すとその列の昇順で並べ替え、もう一度押すと降順になる', async (label, sort) => {
+    renderPage()
+    const header = () => screen.findByRole('columnheader', { name: new RegExp(label) })
+    await userEvent.click(within(await header()).getByRole('button'))
+    await waitFor(() => expect(lastQuery()).toEqual({ q: undefined, sort, order: 'asc', page: 1 }))
+    expect(await header()).toHaveAttribute('aria-sort', 'ascending')
+    await userEvent.click(within(await header()).getByRole('button'))
+    await waitFor(() => expect(lastQuery()).toMatchObject({ sort, order: 'desc' }))
   })
 
   it('「登録日」の列を「パスワード」と「備考」の間に表示する', async () => {

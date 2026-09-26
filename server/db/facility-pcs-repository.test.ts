@@ -180,6 +180,37 @@ describe.skipIf(!databaseUrl)('facilityPcRepository（Neon テスト用ブラン
       expect(names(result.items)).toEqual(['A病院/PC-9', 'B病院/PC-2', 'C病院/PC-2'])
     })
 
+    describe('設置日・登録日での並べ替え', () => {
+      const withDate = async (facilityName: string, installedOn: string | null, createdAt: string) => {
+        const created = await repository.create({ ...baseInput, facilityName, pcName: 'PC-1', installedOn })
+        await sql`UPDATE facility_pcs SET created_at = ${createdAt} WHERE id = ${created.id}`
+      }
+
+      beforeEach(async () => {
+        await withDate('C病院', '2026-03-01', '2026-09-26T01:00:00Z')
+        await withDate('A病院', null, '2026-09-25T00:00:00Z')
+        await withDate('B病院', '2026-03-01', '2026-09-26T00:30:00Z')
+        await withDate('D病院', '2025-01-01', '2026-09-26T00:00:00Z')
+      })
+
+      it('設置日の昇順。同じ日付は施設名の昇順、空欄は最後', async () => {
+        const result = await repository.list({ sort: 'installedOn', order: 'asc', page: 1 })
+        expect(result.items.map((item) => item.facilityName)).toEqual(['D病院', 'B病院', 'C病院', 'A病院'])
+      })
+
+      it('設置日の降順でも、同じ日付は施設名の昇順、空欄は最後', async () => {
+        const result = await repository.list({ sort: 'installedOn', order: 'desc', page: 1 })
+        expect(result.items.map((item) => item.facilityName)).toEqual(['B病院', 'C病院', 'D病院', 'A病院'])
+      })
+
+      it('登録日は同じ日でも登録した時刻の順に並ぶ', async () => {
+        const asc = await repository.list({ sort: 'registeredOn', order: 'asc', page: 1 })
+        expect(asc.items.map((item) => item.facilityName)).toEqual(['A病院', 'D病院', 'B病院', 'C病院'])
+        const desc = await repository.list({ sort: 'registeredOn', order: 'desc', page: 1 })
+        expect(desc.items.map((item) => item.facilityName)).toEqual(['C病院', 'B病院', 'D病院', 'A病院'])
+      })
+    })
+
     it('施設名の部分一致で絞り込み、total も絞り込み後の件数になる', async () => {
       await seed([['中央病院', 'PC-1'], ['中央クリニック', 'PC-1'], ['東病院', 'PC-1']])
       const result = await repository.list({ q: '中央', sort: 'facilityName', order: 'asc', page: 1 })

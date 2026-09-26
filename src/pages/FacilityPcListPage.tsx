@@ -12,6 +12,7 @@ import { deleteFacilityPc, fetchFacilityPcPage } from '../api/facility-pcs-clien
 import { Pagination } from '../components/Pagination'
 import { SecretCell } from '../components/SecretCell'
 import { toDisplayDate } from '../lib/date'
+import { formatProductKey } from '../lib/product-key'
 import { exportFacilityPcsToExcel, type ExportKind } from '../lib/export-excel'
 import { FACILITY_PC_LABELS as LABELS } from '../lib/facility-pc-labels'
 
@@ -141,14 +142,14 @@ export function FacilityPcListPage() {
                 <tr>
                   <SortableHeader column="facilityName" sort={sort} order={order} onSort={updateQuery} />
                   <SortableHeader column="pcName" sort={sort} order={order} onSort={updateQuery} />
-                  <th>{LABELS.installedOn}</th>
+                  <SortableHeader column="installedOn" sort={sort} order={order} onSort={updateQuery} />
                   <th>{LABELS.osVersion}</th>
                   <th>{LABELS.officeType}</th>
                   <th>{LABELS.officeVersion}</th>
                   <th>{LABELS.licenseKey}</th>
                   <th>{LABELS.account}</th>
                   <th>{LABELS.password}</th>
-                  <th>{LABELS.registeredOn}</th>
+                  <SortableHeader column="registeredOn" sort={sort} order={order} onSort={updateQuery} />
                   <th>{LABELS.remarks}</th>
                   <th>操作</th>
                 </tr>
@@ -170,7 +171,7 @@ export function FacilityPcListPage() {
                       <td>{pc.officeType}</td>
                       <td>{pc.officeVersion}</td>
                       <td>
-                        {pc.licenseKey && <SecretCell value={pc.licenseKey} label={LABELS.licenseKey} />}
+                        {pc.licenseKey && <SecretCell value={formatProductKey(pc.licenseKey)} label={LABELS.licenseKey} />}
                       </td>
                       <td>{pc.account}</td>
                       <td>

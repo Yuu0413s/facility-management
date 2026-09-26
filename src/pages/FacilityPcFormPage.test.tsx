@@ -20,7 +20,7 @@ const saved: FacilityPc = {
   osVersion: 'Windows 11',
   officeType: 'H&B',
   officeVersion: '2021',
-  licenseKey: 'KEY-1',
+  licenseKey: 'ABCDE12345FGHIJ67890KLMNO',
   account: 'user1',
   password: 'secret',
   remarks: '1行目\n2行目',
@@ -51,7 +51,7 @@ const fillAll = async () => {
   await user.type(screen.getByLabelText('OSバージョン'), 'Windows 11')
   await user.selectOptions(screen.getByLabelText('Office種類'), 'H&B')
   await user.selectOptions(screen.getByLabelText('Officeバージョン'), '2021')
-  await user.type(screen.getByLabelText('Key'), 'KEY-1')
+  await user.type(screen.getByLabelText('Key'), 'abcde-12345-fghij-67890-klmno')
   await user.type(screen.getByLabelText('アカウント'), 'user1')
   await user.type(screen.getByLabelText('パスワード'), 'secret')
   await user.type(screen.getByLabelText('備考'), '1行目{Enter}2行目')
@@ -115,9 +115,10 @@ describe('FacilityPcFormPage（新規登録）', () => {
     expect(screen.queryByText('任意')).not.toBeInTheDocument()
   })
 
-  it('設置日の見本の文字は yyyymmdd', () => {
+  it('設置日の見本の文字は yyyymmdd、Key はハイフンなし25桁', () => {
     renderPage('/new')
     expect(screen.getByLabelText('設置日')).toHaveAttribute('placeholder', 'yyyymmdd')
+    expect(screen.getByLabelText('Key')).toHaveAttribute('placeholder', '英数字25桁（ハイフンなし）')
   })
 
   // yyyy-mm-dd は API のやり取りの形式と同じなので、画面側で弾かないとそのまま通ってしまう
@@ -128,6 +129,16 @@ describe('FacilityPcFormPage（新規登録）', () => {
     await user.type(screen.getByLabelText('設置日'), typed)
     await user.click(screen.getByRole('button', { name: '登録する' }))
     expect(screen.getByLabelText('設置日')).toHaveAccessibleDescription('yyyymmdd（8桁の数字）で入力してください')
+    expect(createFacilityPc).not.toHaveBeenCalled()
+  })
+
+  it('Key が英数字25桁でなければ、API を呼ばずに Key の欄にエラーを表示する', async () => {
+    renderPage('/new')
+    const user = await fillAll()
+    await user.clear(screen.getByLabelText('Key'))
+    await user.type(screen.getByLabelText('Key'), 'ABCDE12345')
+    await user.click(screen.getByRole('button', { name: '登録する' }))
+    expect(screen.getByLabelText('Key')).toHaveAccessibleDescription('Key は英数字25桁で入力してください')
     expect(createFacilityPc).not.toHaveBeenCalled()
   })
 

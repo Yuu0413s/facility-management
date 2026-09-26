@@ -6,13 +6,20 @@ export const REMARKS_MAX_LENGTH = 500
 export const DATE_INPUT_FORMAT_MESSAGE = 'yyyymmdd（8桁の数字）で入力してください'
 export const PER_PAGE = 50
 // 並べ替えできる列。SQL の列名に対応づけるので、ここに無い値は受け付けない
-export const SORT_KEYS = ['facilityName', 'pcName'] as const
+export const SORT_KEYS = ['facilityName', 'pcName', 'installedOn', 'registeredOn'] as const
 
 // 全項目が任意入力。空白だけ・未送信の項目は null として保存する
 const blankToNull = (value: unknown) => (value === undefined || (typeof value === 'string' && value.trim() === '') ? null : value)
 const optional = <T extends z.ZodType>(schema: T) => z.preprocess(blankToNull, schema.nullable())
 
 const optionalText = optional(z.string().trim())
+
+// Key は Microsoft のプロダクトキー（英数字25桁）。ハイフン付き・小文字で貼り付けられても、
+// ハイフンを除いて大文字にそろえてから確かめ、ハイフンなしで保存する（表示時にハイフンを入れる）
+const productKey = z
+  .string()
+  .transform((value) => value.trim().replaceAll('-', '').toUpperCase())
+  .pipe(z.string().regex(/^[A-Z0-9]{25}$/, 'Key は英数字25桁で入力してください'))
 
 // 形式 → 実在する日付の順に確認し、最初に引っかかった理由だけを返す（pipe で前段が通ったときだけ後段を実行する）
 const isoDate = z
@@ -39,7 +46,7 @@ export const facilityPcInputSchema = z
     osVersion: optionalText,
     officeType: optional(z.enum(OFFICE_TYPES, '選択肢から選んでください')),
     officeVersion: optional(z.enum(OFFICE_VERSIONS, '選択肢から選んでください')),
-    licenseKey: optionalText,
+    licenseKey: optional(productKey),
     account: optionalText,
     password: optionalText,
     remarks: optional(z.string().trim().max(REMARKS_MAX_LENGTH, `${REMARKS_MAX_LENGTH}文字以内で入力してください`)),

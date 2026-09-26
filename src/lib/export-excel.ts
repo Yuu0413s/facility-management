@@ -1,6 +1,7 @@
 import type { FacilityPc } from '../../shared/facility-pc-schema'
 import { fetchAllFacilityPcs } from '../api/facility-pcs-client'
 import { toDisplayDate } from './date'
+import { formatProductKey } from './product-key'
 import { FACILITY_PC_FIELDS, FACILITY_PC_LABELS } from './facility-pc-labels'
 
 export type ExportKind = 'all' | 'account'
@@ -28,7 +29,12 @@ export const buildFacilityPcWorkbook = async (rows: FacilityPc[], kind: ExportKi
   for (const row of rows) {
     // 空欄（null）の項目は空のセルにする
     const cells = Object.fromEntries(fields.map((field) => [field, row[field] ?? '']))
-    sheet.addRow({ ...cells, installedOn: toDisplayDate(row.installedOn), registeredOn: toDisplayDate(row.registeredOn) })
+    sheet.addRow({
+      ...cells,
+      installedOn: toDisplayDate(row.installedOn),
+      registeredOn: toDisplayDate(row.registeredOn),
+      licenseKey: formatProductKey(row.licenseKey),
+    })
   }
   if (fields.includes('remarks')) {
     sheet.getColumn('remarks').alignment = { wrapText: true, vertical: 'top' }

@@ -137,10 +137,16 @@ export function FacilityPcFormPage() {
     )
   }
 
-  const textField = (field: Field, type: 'text' | 'password' = 'text') => (
+  const textField = (field: Field, placeholder?: string) => (
     <FormField field={field} errors={fieldErrors[field]}>
       {(props) => (
-        <input {...props} type={type} value={values[field]} onChange={(event) => setValue(field, event.target.value)} />
+        <input
+          {...props}
+          type="text"
+          placeholder={placeholder}
+          value={values[field]}
+          onChange={(event) => setValue(field, event.target.value)}
+        />
       )}
     </FormField>
   )
@@ -205,7 +211,7 @@ export function FacilityPcFormPage() {
         {textField('osVersion')}
         {selectField('officeType', OFFICE_TYPES)}
         {selectField('officeVersion', OFFICE_VERSIONS)}
-        {textField('licenseKey')}
+        {textField('licenseKey', '英数字25桁（ハイフンなし）')}
         {textField('account')}
         {textField('password')}
 

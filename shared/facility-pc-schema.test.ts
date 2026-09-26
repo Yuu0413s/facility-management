@@ -81,6 +81,22 @@ describe('facilityPcInputSchema', () => {
     expect(facilityPcInputSchema.safeParse({ ...validInput, remarks: 'あ'.repeat(501) }).success).toBe(false)
   })
 
+  describe('Key（プロダクトキー）', () => {
+    it('ハイフン付き・小文字で入力されても、ハイフンを除いて大文字の25桁にする', () => {
+      const result = facilityPcInputSchema.parse({ ...validInput, licenseKey: ' abcde-12345-fghij-67890-klmno ' })
+      expect(result.licenseKey).toBe('ABCDE12345FGHIJ67890KLMNO')
+    })
+
+    it('ハイフンなしの25桁はそのまま受け付ける', () => {
+      expect(facilityPcInputSchema.parse({ ...validInput, licenseKey: 'ABCDE12345FGHIJ67890KLMNO' }).licenseKey).toBe('ABCDE12345FGHIJ67890KLMNO')
+    })
+
+    it.each(['ABCDE12345FGHIJ67890KLMN', 'ABCDE12345FGHIJ67890KLMNOA', 'ABCDE12345FGHIJ67890KLMN!', '-----'])('%s（英数字25桁でない）は弾く', (licenseKey) => {
+      const result = facilityPcInputSchema.safeParse({ ...validInput, licenseKey })
+      expect(result.error?.issues.map((issue) => issue.message)).toEqual(['Key は英数字25桁で入力してください'])
+    })
+  })
+
   it('Office種類は4種以外を弾く', () => {
     expect(facilityPcInputSchema.safeParse({ ...validInput, officeType: 'Home' }).success).toBe(false)
   })
@@ -130,7 +146,11 @@ describe('listQuerySchema', () => {
     expect(listQuerySchema.safeParse({ page }).success).toBe(false)
   })
 
-  it('sort は施設名・PC名以外を弾く（列名を SQL に埋め込むため）', () => {
+  it.each(['installedOn', 'registeredOn'] as const)('sort=%s（設置日・登録日）を受け付ける', (sort) => {
+    expect(listQuerySchema.parse({ sort }).sort).toBe(sort)
+  })
+
+  it('sort は決められた列以外を弾く（列名を SQL に埋め込むため）', () => {
     expect(listQuerySchema.safeParse({ sort: 'password' }).success).toBe(false)
     expect(listQuerySchema.safeParse({ sort: 'pc_name; DROP TABLE facility_pcs' }).success).toBe(false)
   })

@@ -65,11 +65,19 @@ export const readFacilityPcWorkbook = async (buffer: ArrayBuffer): Promise<ReadR
 
   const sheet = workbook.worksheets[0]
   const columns = new Map<number, Field>()
+  const duplicatedFields = new Set<Field>()
   sheet?.getRow(1).eachCell((cell, columnNumber) => {
     const header = readCell(cell.value)
     const field = 'value' in header ? FIELD_BY_LABEL.get(normalizeText(String(header.value))) : undefined
-    if (field) columns.set(columnNumber, field)
+    if (!field) return
+    // 同じ見出しが複数の列にあると、後ろの列の値で前の列の値を黙って上書きしてしまうため、取り込まずに伝える
+    if ([...columns.values()].includes(field)) duplicatedFields.add(field)
+    columns.set(columnNumber, field)
   })
+  if (duplicatedFields.size > 0) {
+    const labels = [...duplicatedFields].map((field) => `「${FACILITY_PC_LABELS[field]}」`).join('')
+    throw new Error(`${labels}の見出しが複数の列にあります。1つにしてください`)
+  }
   if (!sheet || columns.size === 0) {
     throw new Error('1行目に「施設名」「PC名」などの見出しが見つかりません。全件出力した Excel と同じ見出しにしてください')
   }

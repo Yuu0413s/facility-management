@@ -149,6 +149,14 @@ describe('readFacilityPcWorkbook', () => {
     expect(result.rows.map((row) => row.values.facilityName)).toEqual(['A病院'])
   })
 
+  it.each([
+    [['施設名', 'PC名', '施設名'], '施設名'],
+    [['Tag', 'PC名', ' Ｔａｇ '], 'Tag'],
+  ])('同じ見出しが複数の列にあれば（%j）、値を黙って上書きしないよう取り込まずに伝える', async (headers, label) => {
+    const buffer = await toXlsx([headers, ['A', 'B', 'C']])
+    await expect(readFacilityPcWorkbook(buffer)).rejects.toThrow(`「${label}」の見出しが複数の列にあります。1つにしてください`)
+  })
+
   it('知っている見出しが1つも無ければ、取り込めない理由を伝える', async () => {
     const buffer = await toXlsx([['名前', '番号'], ['A', '1']])
     await expect(readFacilityPcWorkbook(buffer)).rejects.toThrow('1行目に「施設名」「PC名」などの見出しが見つかりません')

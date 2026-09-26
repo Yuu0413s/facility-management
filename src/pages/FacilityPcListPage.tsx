@@ -107,7 +107,7 @@ export function FacilityPcListPage() {
   }
 
   const handleImportFile = async (file: File) => {
-    if (!window.confirm(`「${file.name}」を取り込みます。同じ施設名＋PC名のデータは上書きされます。よろしいですか？`)) return
+    if (!window.confirm(`「${file.name}」を取り込みます。同じ施設名＋PC名のデータは、値の入っている項目だけ上書きされます（空欄の項目は今の値が残ります）。よろしいですか？`)) return
     setIsImporting(true)
     setError(null)
     setImportSummary(null)

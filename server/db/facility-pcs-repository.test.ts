@@ -154,6 +154,29 @@ describe.skipIf(!databaseUrl)('facilityPcRepository（Neon テスト用ブラン
       expect(await repository.listAll()).toHaveLength(3)
     })
 
+    it('上書きするとき、取り込む側が空欄の項目は既存の値を残す（値の入っている項目だけ上書きする）', async () => {
+      const existing = await repository.create({ ...baseInput, facilityName: 'A病院', pcName: 'PC-1', licenseKey: 'KEY-OLD', tag: 'TAG-OLD' })
+      await repository.upsertMany([
+        {
+          facilityName: 'A病院',
+          pcName: 'PC-1',
+          tag: null,
+          installedOn: null,
+          osVersion: 'Windows 12',
+          officeType: null,
+          officeVersion: null,
+          licenseKey: null,
+          account: null,
+          password: null,
+          registeredOn: null,
+          remarks: null,
+        },
+      ])
+      const { id: _, ...kept } = (await repository.findById(existing.id))!
+      const { id: __, ...before } = existing
+      expect(kept).toEqual({ ...before, osVersion: 'Windows 12' })
+    })
+
     it('Excel に無い既存の行はそのまま残す', async () => {
       await repository.create({ ...baseInput, facilityName: 'Z病院' })
       await repository.upsertMany([{ ...baseInput, facilityName: 'A病院' }])

@@ -210,13 +210,15 @@ export const createFacilityPcRepository = (sql: Sql): FacilityPcRepository => ({
   async upsertMany(inputs) {
     if (inputs.length === 0) return { created: 0, updated: 0 }
     // Cloudflare では1リクエストで出せる外部通信の回数に上限があるため、全行を1本の SQL で書き込む。
+    // 上書きするときは、取り込む側が空欄（NULL）の項目は既存の値を残す（COALESCE）。
+    // 列の少ない Excel や空欄の多い Excel を取り込んでも、既存のデータが消えないようにするため
     // xmax = 0 は「この文で新しく挿入された行」を表す（更新された行は 0 以外になる）
     const rows = await sql
       .query(
         `INSERT INTO facility_pcs (${WRITABLE_COLUMN_NAMES})
          SELECT ${WRITABLE_COLUMN_NAMES} FROM json_to_recordset($1::json) AS r(${RECORDSET_DEFINITION})
          ON CONFLICT (facility_name, pc_name) DO UPDATE SET
-           ${WRITABLE_COLUMNS.map(([column]) => `${column} = EXCLUDED.${column}`).join(', ')},
+           ${WRITABLE_COLUMNS.map(([column]) => `${column} = COALESCE(EXCLUDED.${column}, facility_pcs.${column})`).join(', ')},
            updated_at = now()
          RETURNING (xmax = 0) AS inserted`,
         [JSON.stringify(inputs.map(toRecord))],

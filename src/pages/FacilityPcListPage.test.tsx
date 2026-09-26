@@ -291,7 +291,7 @@ describe('FacilityPcListPage', () => {
       await upload()
 
       expect(window.confirm).toHaveBeenCalledWith(
-        '「施設PC一覧_20260926.xlsx」を取り込みます。同じ施設名＋PC名のデータは上書きされます。よろしいですか？',
+        '「施設PC一覧_20260926.xlsx」を取り込みます。同じ施設名＋PC名のデータは、値の入っている項目だけ上書きされます（空欄の項目は今の値が残ります）。よろしいですか？',
       )
       expect(importFacilityPcs).toHaveBeenCalledWith([
         { rowNumber: 2, values: { facilityName: 'A病院' } },

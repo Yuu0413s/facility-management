@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes, useLocation, useNavigate } from 'react-router'
 import type { FacilityPc, FacilityPcPage } from '../../shared/facility-pc-schema'
@@ -190,6 +190,43 @@ describe('FacilityPcListPage', () => {
       await userEvent.keyboard('{Escape}')
       expect(screen.queryByRole('button', { name: '全件出力' })).not.toBeInTheDocument()
       expect(trigger).toHaveFocus()
+    })
+
+    it('Tab でメニューの外へフォーカスが移ると閉じる', async () => {
+      renderPage()
+      await openMenu()
+      await userEvent.tab()
+      expect(screen.getByRole('button', { name: '全件出力' })).toHaveFocus()
+      await userEvent.tab()
+      expect(screen.getByRole('button', { name: 'アカウント情報出力' })).toHaveFocus()
+      await userEvent.tab()
+      expect(screen.getByRole('link', { name: '新規登録' })).toHaveFocus()
+      expect(screen.queryByRole('button', { name: '全件出力' })).not.toBeInTheDocument()
+    })
+
+    it('Shift+Tab でメニューの外へフォーカスが移ると閉じる', async () => {
+      renderPage()
+      const trigger = await openMenu()
+      expect(trigger).toHaveFocus()
+      await userEvent.tab({ shift: true })
+      expect(screen.queryByRole('button', { name: '全件出力' })).not.toBeInTheDocument()
+    })
+
+    it('移動先の無いフォーカス喪失（Safari でのクリックなど）では閉じない', async () => {
+      renderPage()
+      const trigger = await openMenu()
+      fireEvent.blur(trigger, { relatedTarget: null })
+      expect(screen.getByRole('button', { name: '全件出力' })).toBeInTheDocument()
+    })
+
+    it('aria-controls は開いているときだけ、実在するメニューを指す', async () => {
+      renderPage()
+      const trigger = await screen.findByRole('button', { name: 'Excel出力' })
+      expect(trigger).not.toHaveAttribute('aria-controls')
+
+      await userEvent.click(trigger)
+      const controlsId = trigger.getAttribute('aria-controls')!
+      expect(document.getElementById(controlsId)).toContainElement(screen.getByRole('button', { name: '全件出力' }))
     })
 
     it('メニューの外をクリックすると閉じる', async () => {

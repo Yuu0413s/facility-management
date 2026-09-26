@@ -227,12 +227,23 @@ function ExportMenu({ isExporting, onSelect }: { isExporting: boolean; onSelect:
   }, [isOpen])
 
   return (
-    <div className="export-menu" ref={containerRef}>
+    <div
+      className="export-menu"
+      ref={containerRef}
+      // Tab / Shift+Tab でフォーカスがメニューの外へ出たら閉じる（開いたまま取り残さない）。
+      // 移動先が無い場合（Safari はクリックしたボタンにフォーカスを移さない）は閉じない。
+      // ここで閉じると選んだ項目のクリックが届く前に消えるため。外側のクリックは pointerdown 側で閉じる
+      onBlur={(event) => {
+        const { relatedTarget } = event
+        if (relatedTarget && !event.currentTarget.contains(relatedTarget)) setIsOpen(false)
+      }}
+    >
       <button
         ref={triggerRef}
         type="button"
         aria-expanded={isOpen}
-        aria-controls="export-menu-options"
+        // 閉じている間はメニューが DOM に無いので、存在しない id を指さないようにする
+        aria-controls={isOpen ? 'export-menu-options' : undefined}
         onClick={() => setIsOpen(!isOpen)}
         disabled={isExporting}
       >

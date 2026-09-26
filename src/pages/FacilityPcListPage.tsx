@@ -151,7 +151,7 @@ export function FacilityPcListPage() {
                   <th>{LABELS.password}</th>
                   <SortableHeader column="registeredOn" sort={sort} order={order} onSort={updateQuery} />
                   <th>{LABELS.remarks}</th>
-                  <th>操作</th>
+                  <th className="actions-column">操作</th>
                 </tr>
               </thead>
               <tbody>
@@ -179,13 +179,15 @@ export function FacilityPcListPage() {
                       </td>
                       <td>{toDisplayDate(pc.registeredOn)}</td>
                       <td className="remarks">{pc.remarks}</td>
-                      <td className="row-actions">
-                        <Link to={`/edit/${pc.id}`} state={{ returnTo }}>
-                          編集
-                        </Link>
-                        <button type="button" className="danger" onClick={() => handleDelete(pc)}>
-                          削除
-                        </button>
+                      <td className="actions-column">
+                        <div className="row-actions">
+                          <Link to={`/edit/${pc.id}`} state={{ returnTo }}>
+                            編集
+                          </Link>
+                          <button type="button" className="danger" onClick={() => handleDelete(pc)}>
+                            削除
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))

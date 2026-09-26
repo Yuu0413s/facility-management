@@ -222,6 +222,14 @@ describe('PUT /api/facility-pcs/:id', () => {
     expect((await send('PUT', '/api/facility-pcs/1', { ...input, officeType: 'Home' })).status).toBe(400)
   })
 
+  it('全項目を空欄にする更新も 400（中身が空の行を作らないため、登録と同じく禁止する）', async () => {
+    const { repository, send } = setup()
+    const res = await send('PUT', '/api/facility-pcs/1', {})
+    expect(res.status).toBe(400)
+    expect(((await res.json()) as { message: string }).message).toBe('いずれかの項目を入力してください')
+    expect(repository.update).not.toHaveBeenCalled()
+  })
+
   it('存在しなければ 404', async () => {
     const { repository, send } = setup()
     repository.update.mockResolvedValue(null)

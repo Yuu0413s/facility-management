@@ -212,6 +212,22 @@ describe('FacilityPcFormPage（編集）', () => {
     expect(await screen.findByText(/一覧ページ/)).toBeInTheDocument()
   })
 
+  it('全項目を消して更新しようとすると、API を呼ばずにエラーを表示する（削除を使ってもらう）', async () => {
+    vi.mocked(fetchFacilityPc).mockResolvedValue(saved)
+    renderPage('/edit/7')
+    await screen.findByDisplayValue('中央病院')
+    const user = userEvent.setup()
+    for (const label of ['施設名', 'PC名', '設置日', 'OSバージョン', 'Key', 'アカウント', 'パスワード', '備考']) {
+      await user.clear(screen.getByLabelText(label))
+    }
+    await user.selectOptions(screen.getByLabelText('Office種類'), '')
+    await user.selectOptions(screen.getByLabelText('Officeバージョン'), '')
+    await user.click(screen.getByRole('button', { name: '更新する' }))
+
+    expect(screen.getByRole('alert')).toHaveTextContent('いずれかの項目を入力してください')
+    expect(updateFacilityPc).not.toHaveBeenCalled()
+  })
+
   it('空欄の項目がある既存データは、空の入力欄として表示する', async () => {
     vi.mocked(fetchFacilityPc).mockResolvedValue({
       ...saved,

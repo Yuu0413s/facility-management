@@ -5,11 +5,11 @@ export const OFFICE_VERSIONS = ['2010', '2013', '2016', '2019', '2021', '2024'] 
 export const REMARKS_MAX_LENGTH = 500
 export const PER_PAGE = 50
 
-const requiredText = z.string().trim().min(1, '入力してください')
+const requiredText = z.string('入力してください').trim().min(1, '入力してください')
 
 // 形式だけでなく、2026-02-30 のような存在しない日付も弾く
 const isoDate = z
-  .string()
+  .string('入力してください')
   .trim()
   .regex(/^\d{4}-\d{2}-\d{2}$/, 'yyyy/mm/dd 形式で入力してください')
   .refine((value) => {

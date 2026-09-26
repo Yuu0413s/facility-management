@@ -45,6 +45,13 @@ describe('facilityPcInputSchema', () => {
     expect(facilityPcInputSchema.safeParse({ ...validInput, remarks: 'あ'.repeat(501) }).success).toBe(false)
   })
 
+  it('項目が送られてこなかった場合も日本語のメッセージを返す', () => {
+    const result = facilityPcInputSchema.safeParse({})
+    expect(result.success).toBe(false)
+    expect(result.error?.issues.find((issue) => issue.path[0] === 'pcName')?.message).toBe('入力してください')
+    expect(result.error?.issues.find((issue) => issue.path[0] === 'installedOn')?.message).toBe('入力してください')
+  })
+
   it('Office種類は4種以外を弾く', () => {
     expect(facilityPcInputSchema.safeParse({ ...validInput, officeType: 'Home' }).success).toBe(false)
   })

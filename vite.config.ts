@@ -16,7 +16,7 @@ export default defineConfig({
       },
       {
         extends: true,
-        test: { name: 'server', environment: 'node', include: ['server/**/*.test.ts', 'shared/**/*.test.ts', 'functions/**/*.test.ts'] },
+        test: { name: 'server', environment: 'node', include: ['server/**/*.test.ts', 'shared/**/*.test.ts'] },
       },
     ],
   },

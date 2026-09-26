@@ -1,7 +1,12 @@
 import { neon } from '@neondatabase/serverless'
 import { config } from 'dotenv'
 import type { FacilityPcInput } from '../../shared/facility-pc-schema'
-import { createFacilityPcRepository, DuplicateFacilityPcError, DuplicateTagError } from './facility-pcs-repository'
+import {
+  createFacilityPcRepository,
+  DuplicateFacilityPcError,
+  DuplicateTagError,
+  rethrowDuplicate as rethrowDuplicateForTest,
+} from './facility-pcs-repository'
 
 // 必ず .env.test（Neon のテスト用ブランチ）を読む。本番の .env は読まない
 config({ path: '.env.test', quiet: true })
@@ -139,7 +144,7 @@ describe.skipIf(!databaseUrl)('facilityPcRepository（Neon テスト用ブラン
     })
   })
 
-  describe('取り込み（upsertMany / findTagConflicts）', () => {
+  describe('取り込み（upsertMany / findTagIssues）', () => {
     it('施設名＋PC名が一致すれば上書き、なければ追加し、件数を返す（1本の SQL）', async () => {
       const existing = await repository.create({ ...baseInput, facilityName: 'A病院', pcName: 'PC-1', remarks: '古い' })
       const result = await repository.upsertMany([
@@ -189,16 +194,53 @@ describe.skipIf(!databaseUrl)('facilityPcRepository（Neon テスト用ブラン
       expect(result).toEqual({ created: 1, updated: 0 })
     })
 
-    it('Tag が DB の「別の」データと重複する行の行番号を返す（同じ施設名＋PC名の行を上書きする場合は重複とみなさない）', async () => {
+    it('Tag が DB の「別の」データと重複する行を返す（同じ施設名＋PC名の行を上書きする場合は重複とみなさない）', async () => {
       await repository.create({ ...baseInput, facilityName: 'A病院', pcName: 'PC-1', tag: 'TAG-1' })
-      const conflicts = await repository.findTagConflicts([
-        { rowNumber: 2, input: { ...baseInput, facilityName: 'A病院', pcName: 'PC-1', tag: 'tag-1' } },
-        { rowNumber: 3, input: { ...baseInput, facilityName: 'B病院', pcName: 'PC-1', tag: 'TAG-1' } },
-        { rowNumber: 4, input: { ...baseInput, facilityName: 'A病院', pcName: null, tag: 'TAG-1' } },
-        { rowNumber: 5, input: { ...baseInput, facilityName: 'C病院', pcName: 'PC-1', tag: 'TAG-9' } },
-        { rowNumber: 6, input: { ...baseInput, facilityName: 'D病院', pcName: 'PC-1', tag: null } },
+      const issues = await repository.findTagIssues([
+        { key: 0, input: { ...baseInput, facilityName: 'A病院', pcName: 'PC-1', tag: 'tag-1' } },
+        { key: 1, input: { ...baseInput, facilityName: 'B病院', pcName: 'PC-1', tag: 'TAG-X' } },
+        { key: 2, input: { ...baseInput, facilityName: 'A病院', pcName: null, tag: 'TAG-1' } },
+        { key: 3, input: { ...baseInput, facilityName: 'D病院', pcName: 'PC-1', tag: null } },
       ])
-      expect(conflicts).toEqual([3, 4])
+      // key 0 は同じ行（A病院/PC-1）の上書きなので重複なし。
+      // key 2 は PC名が空欄で照合できず追加になるため DB の TAG-1 と重複し、ファイル内でも key 0（tag-1）と重複する
+      expect(issues).toEqual([{ key: 2, duplicateOfKey: 0, existsInDb: true }])
+    })
+
+    it('ファイル内の Tag の重複も、DB と同じ PostgreSQL の lower() で判定し、先に出てきた行を返す', async () => {
+      // JavaScript の toLowerCase() では 'İ' → 'i̇' だが、PostgreSQL の lower() では 'i' になる（DB の重複禁止と同じ基準にする）
+      const issues = await repository.findTagIssues([
+        { key: 0, input: { ...baseInput, facilityName: 'A病院', tag: 'İ' } },
+        { key: 1, input: { ...baseInput, facilityName: 'B病院', tag: 'i' } },
+        { key: 2, input: { ...baseInput, facilityName: 'C病院', tag: 'TAG-1' } },
+        { key: 3, input: { ...baseInput, facilityName: 'D病院', tag: 'tag-1' } },
+        { key: 4, input: { ...baseInput, facilityName: 'E病院', tag: 'TAG-1' } },
+      ])
+      expect(issues).toEqual([
+        { key: 1, duplicateOfKey: 0, existsInDb: false },
+        { key: 3, duplicateOfKey: 2, existsInDb: false },
+        { key: 4, duplicateOfKey: 2, existsInDb: false },
+      ])
+    })
+
+    it('ファイル内の Tag 重複を取り除いた行は、DB の一意制約に引っかからずにアップサートできる', async () => {
+      const inputs = [
+        { ...baseInput, facilityName: 'A病院', tag: 'İ' },
+        { ...baseInput, facilityName: 'B病院', tag: 'i' },
+      ]
+      const issues = await repository.findTagIssues(inputs.map((input, key) => ({ key, input })))
+      const rejected = new Set(issues.map((issue) => issue.key))
+      await expect(repository.upsertMany(inputs.filter((_, key) => !rejected.has(key)))).resolves.toEqual({ created: 1, updated: 0 })
+    })
+
+    it('施設名＋PC名・Tag 以外の一意制約の違反（主キーなど）は、重複エラーに言い換えずにそのまま投げる', async () => {
+      const created = await repository.create(baseInput)
+      const error = await sql`INSERT INTO facility_pcs (id, facility_name) OVERRIDING SYSTEM VALUE VALUES (${created.id}, 'X')`.catch(
+        (e: unknown) => e,
+      )
+      expect(error).toMatchObject({ code: '23505' })
+      // 主キー違反を起こす経路は通常の登録には無いため、ここでは判定関数を直接確かめる
+      expect(() => rethrowDuplicateForTest(error)).toThrow(error as Error)
     })
   })
 

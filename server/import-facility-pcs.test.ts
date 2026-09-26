@@ -4,7 +4,7 @@ import { importFacilityPcs } from './import-facility-pcs'
 
 const setup = () => {
   const repository = {
-    findTagConflicts: vi.fn(async () => [] as number[]),
+    findTagIssues: vi.fn(async () => [] as Array<{ key: number; duplicateOfKey: number | null; existsInDb: boolean }>),
     upsertMany: vi.fn(async (inputs: FacilityPcInput[]) => ({ created: inputs.length, updated: 0 })),
   }
   return { repository, run: (rows: Array<{ rowNumber: number; values: Record<string, unknown> }>) => importFacilityPcs(repository as unknown as FacilityPcRepository, rows) }
@@ -54,24 +54,38 @@ describe('importFacilityPcs', () => {
     expect(repository.upsertMany.mock.calls[0][0]).toHaveLength(3)
   })
 
-  it('ファイル内で同じ Tag（大文字・小文字の違いは同じとみなす）が複数行あれば、後から出てきた行をエラーにする', async () => {
-    const { run } = setup()
+  it('Tag の重複（ファイル内・DB）は DB の判定結果を使い、ファイル内なら先の行番号を、DB なら登録済みであることを伝える', async () => {
+    const { repository, run } = setup()
+    // key は配列の位置。2つ目（5行目）が1つ目（2行目）と重複、3つ目（9行目）が DB と重複
+    repository.findTagIssues.mockResolvedValue([
+      { key: 1, duplicateOfKey: 0, existsInDb: false },
+      { key: 2, duplicateOfKey: null, existsInDb: true },
+    ])
     const result = await run([
       { rowNumber: 2, values: { facilityName: 'A病院', tag: 'TAG-1' } },
-      { rowNumber: 3, values: { facilityName: 'B病院', tag: 'tag-1' } },
+      { rowNumber: 5, values: { facilityName: 'B病院', tag: 'tag-1' } },
+      { rowNumber: 9, values: { facilityName: 'C病院', tag: 'TAG-2' } },
+      { rowNumber: 10, values: { facilityName: 'D病院', tag: 'TAG-3' } },
     ])
-    expect(result.errors).toEqual([{ rowNumber: 3, issues: [{ field: 'tag', message: '2行目とTagが重複しています' }] }])
+    expect(result.errors).toEqual([
+      { rowNumber: 5, issues: [{ field: 'tag', message: '2行目とTagが重複しています' }] },
+      { rowNumber: 9, issues: [{ field: 'tag', message: '同じTagがすでに登録されています' }] },
+    ])
+    expect(repository.upsertMany.mock.calls[0][0].map((input: FacilityPcInput) => input.facilityName)).toEqual(['A病院', 'D病院'])
   })
 
-  it('DB の別のデータと Tag が重複する行はエラーにする', async () => {
+  it('findTagIssues には、施設名＋PC名の重複を取り除いた後の行を、配列の位置をキーにして渡す', async () => {
     const { repository, run } = setup()
-    repository.findTagConflicts.mockResolvedValue([3])
-    const result = await run([
-      { rowNumber: 2, values: { facilityName: 'A病院', tag: 'TAG-1' } },
-      { rowNumber: 3, values: { facilityName: 'B病院', tag: 'TAG-2' } },
+    await run([
+      { rowNumber: 2, values: { facilityName: 'A病院', pcName: 'PC-1', tag: 'T' } },
+      { rowNumber: 3, values: { facilityName: 'A病院', pcName: 'PC-1', tag: 'U' } },
+      { rowNumber: 4, values: { facilityName: 'B病院', tag: 'V' } },
     ])
-    expect(result.errors).toEqual([{ rowNumber: 3, issues: [{ field: 'tag', message: '同じTagがすでに登録されています' }] }])
-    expect(repository.upsertMany.mock.calls[0][0].map((input: FacilityPcInput) => input.facilityName)).toEqual(['A病院'])
+    const [rows] = repository.findTagIssues.mock.calls[0] as unknown as [Array<{ key: number; input: FacilityPcInput }>]
+    expect(rows.map(({ key, input }) => [key, input.tag])).toEqual([
+      [0, 'T'],
+      [1, 'V'],
+    ])
   })
 
   it('取り込める行が無ければ DB に書き込まない', async () => {

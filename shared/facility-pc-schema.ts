@@ -85,7 +85,9 @@ export const importRequestSchema = z.object({
   rows: z
     .array(z.object({ rowNumber: z.number().int().min(1), values: z.record(z.string(), z.unknown()) }))
     .min(1, '取り込む行がありません')
-    .max(IMPORT_MAX_ROWS, `一度に取り込めるのは${IMPORT_MAX_ROWS}行までです`),
+    .max(IMPORT_MAX_ROWS, `一度に取り込めるのは${IMPORT_MAX_ROWS}行までです`)
+    // エラー行を行番号で伝えるため、行番号は重複させない
+    .refine((rows) => new Set(rows.map((row) => row.rowNumber)).size === rows.length, '行番号が重複しています'),
 })
 
 export type ImportRow = z.infer<typeof importRequestSchema>['rows'][number]

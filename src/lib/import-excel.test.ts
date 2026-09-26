@@ -108,6 +108,26 @@ describe('readFacilityPcWorkbook', () => {
     expect(row.values).toMatchObject({ pcName: '12345', account: 'user@example.com', officeVersion: '2021' })
   })
 
+  it('エラーのセル（#N/A など）や、結果を読めない数式は、黙って空欄にせず、その行をエラーにする', async () => {
+    const buffer = await toXlsx([
+      ['施設名', 'PC名', 'アカウント'],
+      ['A病院', { error: '#N/A' }, 'user1'],
+      ['B病院', { formula: 'VLOOKUP(1,X,2)', result: { error: '#REF!' } }, 'user2'],
+      ['C病院', 'PC-3', { formula: 'A1&B1' }],
+      [null, { error: '#DIV/0!' }, null],
+      ['E病院', 'PC-5', 'user5'],
+    ])
+    const result = await readFacilityPcWorkbook(buffer)
+    expect(result.rows.map((row) => row.rowNumber)).toEqual([6])
+    expect(result.skipped).toBe(0)
+    expect(result.errors).toEqual([
+      { rowNumber: 2, issues: [{ field: 'pcName', message: 'セルがエラー（#N/A）になっています' }] },
+      { rowNumber: 3, issues: [{ field: 'pcName', message: 'セルがエラー（#REF!）になっています' }] },
+      { rowNumber: 4, issues: [{ field: 'account', message: '数式の結果を読み取れません。Excel で開いて保存し直してください' }] },
+      { rowNumber: 5, issues: [{ field: 'pcName', message: 'セルがエラー（#DIV/0!）になっています' }] },
+    ])
+  })
+
   it('全項目が空欄の行は読み飛ばし、件数を返す', async () => {
     const buffer = await toXlsx([
       ['施設名', 'PC名'],

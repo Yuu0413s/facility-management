@@ -29,7 +29,7 @@ const setup = () => {
     create: vi.fn(),
     update: vi.fn(),
     delete: vi.fn(),
-    findTagConflicts: vi.fn(),
+    findTagIssues: vi.fn(),
     upsertMany: vi.fn(),
   } satisfies Record<keyof FacilityPcRepository, unknown>
   const createRepository = vi.fn(() => repository as FacilityPcRepository)
@@ -95,7 +95,7 @@ describe('キャッシュ', () => {
 describe('POST /api/facility-pcs/import', () => {
   it('行データを受け取って取り込み、件数とエラー行を返す', async () => {
     const { repository, send } = setup()
-    repository.findTagConflicts.mockResolvedValue([])
+    repository.findTagIssues.mockResolvedValue([])
     repository.upsertMany.mockResolvedValue({ created: 1, updated: 0 })
     const res = await send('POST', '/api/facility-pcs/import', {
       rows: [
@@ -117,6 +117,18 @@ describe('POST /api/facility-pcs/import', () => {
     const res = await send('POST', '/api/facility-pcs/import', { rows })
     expect(res.status).toBe(400)
     expect(((await res.json()) as { message: string }).message).toBe('一度に取り込めるのは1000行までです')
+  })
+
+  it('行番号が重複しているリクエストは 400（行番号でエラー行を伝えるため）', async () => {
+    const { send } = setup()
+    const res = await send('POST', '/api/facility-pcs/import', {
+      rows: [
+        { rowNumber: 2, values: { facilityName: 'A' } },
+        { rowNumber: 2, values: { facilityName: 'B' } },
+      ],
+    })
+    expect(res.status).toBe(400)
+    expect(((await res.json()) as { message: string }).message).toBe('行番号が重複しています')
   })
 
   it('行が無い・形が違うリクエストは 400', async () => {

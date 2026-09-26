@@ -32,11 +32,14 @@ export type FacilityPcRepository = {
   create(input: FacilityPcInput): Promise<FacilityPc>
   update(id: number, input: FacilityPcInput): Promise<FacilityPc | null>
   delete(id: number): Promise<boolean>
-  // 取り込み用。DB の「別の」データと Tag が重複する行の行番号を返す
-  findTagConflicts(rows: Array<{ rowNumber: number; input: FacilityPcInput }>): Promise<number[]>
+  // 取り込み用。Tag の重複がある行を返す（key は呼び出し側が振る一意な番号。小さいほど先の行）。
+  // duplicateOfKey: ファイル内で先に出てきた同じ Tag の行 / existsInDb: DB の「別の」データと重複
+  findTagIssues(rows: Array<{ key: number; input: FacilityPcInput }>): Promise<TagIssue[]>
   // 取り込み用。施設名＋PC名が一致すれば上書き、なければ追加する（1本の SQL）
   upsertMany(inputs: FacilityPcInput[]): Promise<{ created: number; updated: number }>
 }
+
+export type TagIssue = { key: number; duplicateOfKey: number | null; existsInDb: boolean }
 
 type Sql = NeonQueryFunction<false, false>
 
@@ -102,15 +105,19 @@ const toRecord = (input: FacilityPcInput) => Object.fromEntries(WRITABLE_COLUMNS
 // LIKE の特殊文字（\ % _）を普通の文字として扱う
 const toContainsPattern = (keyword: string) => `%${keyword.replace(/[\\%_]/g, (char) => `\\${char}`)}%`
 
-// 重複エラー（23505）は、違反した制約の名前で原因を見分ける（db/migrations/003_add_tag.sql）
+// 重複エラー（23505）は、違反した制約の名前で原因を見分ける（db/schema.sql、db/migrations/003_add_tag.sql）
+const FACILITY_PC_UNIQUE_CONSTRAINT = 'facility_pcs_facility_name_pc_name_key'
 const TAG_UNIQUE_INDEX = 'facility_pcs_tag_lower_key'
 
 const isUniqueViolation = (error: unknown): error is { code: string; constraint?: string } =>
   typeof error === 'object' && error !== null && 'code' in error && error.code === UNIQUE_VIOLATION
 
-const rethrowDuplicate = (error: unknown): never => {
+// 知っている2つの制約だけを利用者向けの重複エラーに言い換える。
+// それ以外（主キーの違反や、将来増えた制約など）は、誤った説明をしないよう元のエラーのまま投げる
+export const rethrowDuplicate = (error: unknown): never => {
   if (isUniqueViolation(error)) {
-    throw error.constraint === TAG_UNIQUE_INDEX ? new DuplicateTagError() : new DuplicateFacilityPcError()
+    if (error.constraint === FACILITY_PC_UNIQUE_CONSTRAINT) throw new DuplicateFacilityPcError()
+    if (error.constraint === TAG_UNIQUE_INDEX) throw new DuplicateTagError()
   }
   throw error
 }
@@ -182,29 +189,37 @@ export const createFacilityPcRepository = (sql: Sql): FacilityPcRepository => ({
     return rows.length > 0
   },
 
-  async findTagConflicts(rows) {
+  async findTagIssues(rows) {
     const withTag = rows.filter(({ input }) => input.tag !== null)
     if (withTag.length === 0) return []
-    // 施設名とPC名がそろっていて同じ行を上書きする場合は、自分自身の Tag なので重複とみなさない
-    const conflicts = await sql.query(
-      `SELECT DISTINCT r.row_number AS "rowNumber"
-       FROM json_to_recordset($1::json) AS r(row_number int, facility_name text, pc_name text, tag text)
-       JOIN facility_pcs e ON lower(e.tag) = lower(r.tag)
-       WHERE NOT (r.facility_name IS NOT NULL AND r.pc_name IS NOT NULL
-                  AND e.facility_name = r.facility_name AND e.pc_name = r.pc_name)
-       ORDER BY 1`,
+    // ファイル内の重複も DB との重複も、DB の重複禁止（lower(tag) の UNIQUE INDEX）と同じ PostgreSQL の lower() で判定する。
+    // JavaScript の toLowerCase() とは一部の文字で結果が違い、判定がずれるとアップサート全体が失敗するため
+    const issues = await sql.query(
+      `WITH r AS (
+         SELECT * FROM json_to_recordset($1::json) AS r(key int, facility_name text, pc_name text, tag text)
+       )
+       SELECT key, "duplicateOfKey", "existsInDb" FROM (
+         SELECT
+           r.key,
+           (SELECT min(p.key) FROM r p WHERE lower(p.tag) = lower(r.tag) AND p.key < r.key) AS "duplicateOfKey",
+           -- 施設名とPC名がそろっていて同じ行を上書きする場合は、自分自身の Tag なので重複とみなさない
+           EXISTS (
+             SELECT 1 FROM facility_pcs e
+             WHERE lower(e.tag) = lower(r.tag)
+               AND NOT (r.facility_name IS NOT NULL AND r.pc_name IS NOT NULL
+                        AND e.facility_name = r.facility_name AND e.pc_name = r.pc_name)
+           ) AS "existsInDb"
+         FROM r
+       ) checked
+       WHERE "duplicateOfKey" IS NOT NULL OR "existsInDb"
+       ORDER BY key`,
       [
         JSON.stringify(
-          withTag.map(({ rowNumber, input }) => ({
-            row_number: rowNumber,
-            facility_name: input.facilityName,
-            pc_name: input.pcName,
-            tag: input.tag,
-          })),
+          withTag.map(({ key, input }) => ({ key, facility_name: input.facilityName, pc_name: input.pcName, tag: input.tag })),
         ),
       ],
     )
-    return conflicts.map((row) => row.rowNumber as number)
+    return issues as TagIssue[]
   },
 
   async upsertMany(inputs) {

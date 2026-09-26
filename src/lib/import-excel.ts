@@ -19,18 +19,24 @@ const DATE_FORMAT_MESSAGE = '日付は yyyy/mm/dd か yyyymmdd の形で入力�
 const normalizeText = (value: string) => value.normalize('NFKC').trim()
 const FIELD_BY_LABEL = new Map(FACILITY_PC_FIELDS.map((field) => [normalizeText(FACILITY_PC_LABELS[field]), field]))
 
-// Excel のセルは、文字・数値・日付のほか、リンク付きの文字（メールアドレスなど）や数式の結果などの形で入っている
-const toCellValue = (value: CellValue): string | Date => {
-  if (value === null || value === undefined) return ''
-  if (value instanceof Date) return value
-  if (typeof value === 'object') {
-    if ('richText' in value) return value.richText.map((part) => part.text).join('')
-    if ('hyperlink' in value) return toCellValue(value.text as CellValue)
-    if ('result' in value) return toCellValue(value.result as CellValue)
-    // #N/A などのエラー値は空欄として扱う
-    if ('error' in value) return ''
+// Excel のセルは、文字・数値・日付のほか、リンク付きの文字（メールアドレスなど）や数式の結果などの形で入っている。
+// エラー値（#N/A など）や結果を読めない数式を黙って空欄にすると、既存の値が残ったり行が読み飛ばされたりして
+// 気づけない欠落になるため、読み取れない理由（error）として返す
+type CellRead = { value: string | Date } | { error: string }
+
+const readCell = (value: CellValue): CellRead => {
+  if (value === null || value === undefined) return { value: '' }
+  if (value instanceof Date) return { value }
+  if (typeof value !== 'object') return { value: String(value) }
+  if ('error' in value) return { error: `セルがエラー（${value.error}）になっています` }
+  if ('richText' in value) return { value: value.richText.map((part) => part.text).join('') }
+  if ('hyperlink' in value) return readCell(value.text as CellValue)
+  if ('formula' in value || 'sharedFormula' in value) {
+    return 'result' in value && value.result !== undefined
+      ? readCell(value.result as CellValue)
+      : { error: '数式の結果を読み取れません。Excel で開いて保存し直してください' }
   }
-  return String(value)
+  return { error: 'セルの内容を読み取れません' }
 }
 
 // Excel の日付セルは UTC の 0 時として読み込まれるので、UTC の年月日を使う（時差で前日にずれないように）
@@ -60,7 +66,8 @@ export const readFacilityPcWorkbook = async (buffer: ArrayBuffer): Promise<ReadR
   const sheet = workbook.worksheets[0]
   const columns = new Map<number, Field>()
   sheet?.getRow(1).eachCell((cell, columnNumber) => {
-    const field = FIELD_BY_LABEL.get(normalizeText(String(toCellValue(cell.value))))
+    const header = readCell(cell.value)
+    const field = 'value' in header ? FIELD_BY_LABEL.get(normalizeText(String(header.value))) : undefined
     if (field) columns.set(columnNumber, field)
   })
   if (!sheet || columns.size === 0) {
@@ -77,7 +84,12 @@ export const readFacilityPcWorkbook = async (buffer: ArrayBuffer): Promise<ReadR
     const issues: ImportRowError['issues'] = []
 
     for (const [columnNumber, field] of columns) {
-      const cellValue = toCellValue(row.getCell(columnNumber).value)
+      const cell = readCell(row.getCell(columnNumber).value)
+      if ('error' in cell) {
+        issues.push({ field, message: cell.error })
+        continue
+      }
+      const cellValue = cell.value
       if (DATE_FIELDS.has(field)) {
         const isoDate = toIsoDate(cellValue)
         if (isoDate === null) issues.push({ field, message: DATE_FORMAT_MESSAGE })

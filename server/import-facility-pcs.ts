@@ -44,7 +44,6 @@ const rejectDuplicatesInFile = (
 const facilityPcKey = ({ facilityName, pcName }: FacilityPcInput) =>
   facilityName !== null && pcName !== null ? JSON.stringify([facilityName, pcName]) : null
 
-const tagKey = ({ tag }: FacilityPcInput) => (tag === null ? null : tag.toLowerCase())
 
 export const importFacilityPcs = async (repository: FacilityPcRepository, rows: ImportRow[]): Promise<ImportResult> => {
   const errors: ImportRowError[] = []
@@ -62,18 +61,21 @@ export const importFacilityPcs = async (repository: FacilityPcRepository, rows: 
     field: null,
     message: `${first}行目と施設名・PC名が重複しています`,
   }))
-  const byTag = rejectDuplicatesInFile(byFacilityPc.accepted, tagKey, (first) => ({
-    field: 'tag',
-    message: `${first}行目とTagが重複しています`,
-  }))
-  errors.push(...byFacilityPc.errors, ...byTag.errors)
+  errors.push(...byFacilityPc.errors)
 
-  // 3. DB の別のデータとの Tag の重複（1本の SQL で確かめる）
-  const conflicts = new Set(await repository.findTagConflicts(byTag.accepted))
-  const toWrite = byTag.accepted.filter((row) => !conflicts.has(row.rowNumber))
-  for (const rowNumber of conflicts) {
-    errors.push({ rowNumber, issues: [{ field: 'tag', message: '同じTagがすでに登録されています' }] })
+  // 3. Tag の重複（ファイル内・DB の別のデータ）を、DB の重複禁止と同じ基準（PostgreSQL の lower()）で1本の SQL で確かめる。
+  //    照合には利用者が送った行番号ではなく配列の位置を使う（行番号が一意だと決めつけないため）
+  const candidates = byFacilityPc.accepted
+  const tagIssues = await repository.findTagIssues(candidates.map(({ input }, key) => ({ key, input })))
+  const rejectedKeys = new Set<number>()
+  for (const { key, duplicateOfKey } of tagIssues) {
+    rejectedKeys.add(key)
+    // ファイル内の重複を優先して伝える（そちらを直せば DB との重複も分かりやすくなるため）。それ以外は DB との重複
+    const message =
+      duplicateOfKey !== null ? `${candidates[duplicateOfKey].rowNumber}行目とTagが重複しています` : '同じTagがすでに登録されています'
+    errors.push({ rowNumber: candidates[key].rowNumber, issues: [{ field: 'tag', message }] })
   }
+  const toWrite = candidates.filter((_, key) => !rejectedKeys.has(key))
 
   // 4. 残りを1本の SQL でアップサートする
   const { created, updated } =

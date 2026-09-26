@@ -15,10 +15,11 @@ const optional = <T extends z.ZodType>(schema: T) => z.preprocess(blankToNull, s
 const optionalText = optional(z.string().trim())
 
 // Key は Microsoft のプロダクトキー（英数字25桁）。ハイフン付き・小文字で貼り付けられても、
-// ハイフンを除いて大文字にそろえてから確かめ、ハイフンなしで保存する（表示時にハイフンを入れる）
+// ハイフンを除いて大文字にそろえてから確かめ、ハイフンなしで保存する（表示時にハイフンを入れる）。
+// 日本語入力のまま打たれた全角の英数字・ハイフンも、NFKC 正規化で半角にそろえてから扱う
 const productKey = z
   .string()
-  .transform((value) => value.trim().replaceAll('-', '').toUpperCase())
+  .transform((value) => value.normalize('NFKC').trim().replaceAll('-', '').toUpperCase())
   .pipe(z.string().regex(/^[A-Z0-9]{25}$/, 'Key は英数字25桁で入力してください'))
 
 // 形式 → 実在する日付の順に確認し、最初に引っかかった理由だけを返す（pipe で前段が通ったときだけ後段を実行する）

@@ -11,7 +11,7 @@ import {
   type FacilityPcInput,
 } from '../../shared/facility-pc-schema'
 import { ApiError, createFacilityPc, fetchFacilityPc, updateFacilityPc, type FieldErrors } from '../api/facility-pcs-client'
-import { toInputDate, toIsoDate } from '../lib/date'
+import { isDateInputFormat, toInputDate, toIsoDate } from '../lib/date'
 import { FACILITY_PC_LABELS as LABELS } from '../lib/facility-pc-labels'
 
 type Field = keyof FacilityPcInput
@@ -78,8 +78,7 @@ export function FacilityPcFormPage() {
     const parsed = facilityPcInputSchema.safeParse({ ...values, installedOn: toIsoDate(values.installedOn) })
     // 入力欄は yyyymmdd だけを受け付ける。スキーマは API 用の yyyy-mm-dd を正しい形とするため、
     // 入力欄に yyyy-mm-dd と打たれるとすり抜けてしまう。入力欄の形式はここで確かめる
-    const installedOnInput = values.installedOn.trim()
-    const hasInvalidDateFormat = installedOnInput !== '' && !/^\d{8}$/.test(installedOnInput)
+    const hasInvalidDateFormat = values.installedOn.trim() !== '' && !isDateInputFormat(values.installedOn)
     if (!parsed.success || hasInvalidDateFormat) {
       const { formErrors, fieldErrors } = parsed.success ? { formErrors: [], fieldErrors: {} } : z.flattenError(parsed.error)
       setFieldErrors(hasInvalidDateFormat ? { ...fieldErrors, installedOn: [DATE_INPUT_FORMAT_MESSAGE] } : fieldErrors)

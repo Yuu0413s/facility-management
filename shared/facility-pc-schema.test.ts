@@ -87,6 +87,11 @@ describe('facilityPcInputSchema', () => {
       expect(result.licenseKey).toBe('ABCDE12345FGHIJ67890KLMNO')
     })
 
+    it('全角の英数字・ハイフンは半角にしてから確かめる（日本語入力のまま打った場合）', () => {
+      const result = facilityPcInputSchema.parse({ ...validInput, licenseKey: 'ａｂｃｄｅ１２３４５－ＦＧＨＩＪ６７８９０ＫＬＭＮＯ' })
+      expect(result.licenseKey).toBe('ABCDE12345FGHIJ67890KLMNO')
+    })
+
     it('ハイフンなしの25桁はそのまま受け付ける', () => {
       expect(facilityPcInputSchema.parse({ ...validInput, licenseKey: 'ABCDE12345FGHIJ67890KLMNO' }).licenseKey).toBe('ABCDE12345FGHIJ67890KLMNO')
     })

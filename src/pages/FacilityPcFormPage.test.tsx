@@ -142,6 +142,15 @@ describe('FacilityPcFormPage（新規登録）', () => {
     expect(createFacilityPc).not.toHaveBeenCalled()
   })
 
+  it('設置日を全角の数字で入力しても登録できる', async () => {
+    vi.mocked(createFacilityPc).mockResolvedValue(saved)
+    renderPage('/new')
+    const user = userEvent.setup()
+    await user.type(screen.getByLabelText('設置日'), '２０２６０９２６')
+    await user.click(screen.getByRole('button', { name: '登録する' }))
+    expect(createFacilityPc).toHaveBeenCalledWith(expect.objectContaining({ installedOn: '2026-09-26' }))
+  })
+
   it('存在しない日付はエラーにする', async () => {
     renderPage('/new')
     const user = await fillAll()

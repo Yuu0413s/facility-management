@@ -3,6 +3,7 @@ import { z } from 'zod'
 export const OFFICE_TYPES = ['Personal', 'H&B', 'Pro', 'Access'] as const
 export const OFFICE_VERSIONS = ['2010', '2013', '2016', '2019', '2021', '2024'] as const
 export const REMARKS_MAX_LENGTH = 500
+export const DATE_INPUT_FORMAT_MESSAGE = 'yyyymmdd（8桁の数字）で入力してください'
 export const PER_PAGE = 50
 // 並べ替えできる列。SQL の列名に対応づけるので、ここに無い値は受け付けない
 export const SORT_KEYS = ['facilityName', 'pcName'] as const
@@ -18,7 +19,7 @@ const isoDate = z
   .string()
   .trim()
   // 画面の入力欄は yyyymmdd。画面側で yyyy-mm-dd に変換してから送るので、形式違いは入力欄の形式で伝える
-  .regex(/^\d{4}-\d{2}-\d{2}$/, 'yyyymmdd（8桁の数字）で入力してください')
+  .regex(/^\d{4}-\d{2}-\d{2}$/, DATE_INPUT_FORMAT_MESSAGE)
   .pipe(
     z
       .string()

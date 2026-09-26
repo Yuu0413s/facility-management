@@ -115,12 +115,17 @@ describe('FacilityPcFormPage（新規登録）', () => {
     expect(screen.queryByText('任意')).not.toBeInTheDocument()
   })
 
-  it('設置日の見本の文字は yyyymmdd で、yyyy/mm/dd の形は受け付けない', async () => {
+  it('設置日の見本の文字は yyyymmdd', () => {
     renderPage('/new')
     expect(screen.getByLabelText('設置日')).toHaveAttribute('placeholder', 'yyyymmdd')
+  })
+
+  // yyyy-mm-dd は API のやり取りの形式と同じなので、画面側で弾かないとそのまま通ってしまう
+  it.each(['2026/09/26', '2026-09-26', '2026926'])('設置日の %s（8桁の数字でない形）は受け付けない', async (typed) => {
+    renderPage('/new')
     const user = await fillAll()
     await user.clear(screen.getByLabelText('設置日'))
-    await user.type(screen.getByLabelText('設置日'), '2026/09/26')
+    await user.type(screen.getByLabelText('設置日'), typed)
     await user.click(screen.getByRole('button', { name: '登録する' }))
     expect(screen.getByLabelText('設置日')).toHaveAccessibleDescription('yyyymmdd（8桁の数字）で入力してください')
     expect(createFacilityPc).not.toHaveBeenCalled()

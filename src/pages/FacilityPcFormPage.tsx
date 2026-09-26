@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'rea
 import { Link, useLocation, useNavigate, useParams } from 'react-router'
 import { z } from 'zod'
 import {
+  DATE_INPUT_FORMAT_MESSAGE,
   OFFICE_TYPES,
   OFFICE_VERSIONS,
   REMARKS_MAX_LENGTH,
@@ -75,9 +76,13 @@ export function FacilityPcFormPage() {
 
     // サーバーと同じ Zod スキーマで先に確認し、明らかな入力ミスは通信せずに知らせる
     const parsed = facilityPcInputSchema.safeParse({ ...values, installedOn: toIsoDate(values.installedOn) })
-    if (!parsed.success) {
-      const { formErrors, fieldErrors } = z.flattenError(parsed.error)
-      setFieldErrors(fieldErrors)
+    // 入力欄は yyyymmdd だけを受け付ける。スキーマは API 用の yyyy-mm-dd を正しい形とするため、
+    // 入力欄に yyyy-mm-dd と打たれるとすり抜けてしまう。入力欄の形式はここで確かめる
+    const installedOnInput = values.installedOn.trim()
+    const hasInvalidDateFormat = installedOnInput !== '' && !/^\d{8}$/.test(installedOnInput)
+    if (!parsed.success || hasInvalidDateFormat) {
+      const { formErrors, fieldErrors } = parsed.success ? { formErrors: [], fieldErrors: {} } : z.flattenError(parsed.error)
+      setFieldErrors(hasInvalidDateFormat ? { ...fieldErrors, installedOn: [DATE_INPUT_FORMAT_MESSAGE] } : fieldErrors)
       // 「いずれかの項目を入力してください」は特定の項目に属さないので、フォームの上に出す
       setFormError(formErrors[0] ?? null)
       return

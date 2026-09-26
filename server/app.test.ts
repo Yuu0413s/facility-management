@@ -10,12 +10,12 @@ const input: FacilityPcInput = {
   osVersion: 'Windows 11',
   officeType: 'Pro',
   officeVersion: '2021',
-  licenseKey: 'KEY-1',
+  licenseKey: 'ABCDE12345FGHIJ67890KLMNO',
   account: 'user1',
   password: 'secret',
   remarks: null,
 }
-const saved: FacilityPc = { ...input, id: 1 }
+const saved: FacilityPc = { ...input, id: 1, registeredOn: '2026-09-26' }
 
 const env = { DATABASE_URL: 'postgres://example', BASIC_AUTH_USER: 'u', BASIC_AUTH_PASSWORD: 'p' }
 
@@ -57,7 +57,14 @@ describe('GET /api/facility-pcs', () => {
     expect(repository.list).toHaveBeenCalledWith({ q: undefined, sort: 'facilityName', order: 'asc', page: 1 })
   })
 
-  it('施設名・PC名以外での並べ替えは 400', async () => {
+  it.each(['installedOn', 'registeredOn'])('sort=%s で並べ替えを依頼できる', async (sort) => {
+    const { repository, request } = setup()
+    repository.list.mockResolvedValue({ items: [], total: 0, page: 1, perPage: 50 })
+    await request(`/api/facility-pcs?sort=${sort}`)
+    expect(repository.list).toHaveBeenCalledWith({ q: undefined, sort, order: 'asc', page: 1 })
+  })
+
+  it('決められた列以外での並べ替えは 400', async () => {
     const { repository, request } = setup()
     const res = await request('/api/facility-pcs?sort=password')
     expect(res.status).toBe(400)
@@ -124,12 +131,34 @@ describe('POST /api/facility-pcs', () => {
     expect(repository.create).toHaveBeenCalledWith(input)
   })
 
+  it('Key はハイフンを除いて大文字にしてから保存する', async () => {
+    const { repository, send } = setup()
+    repository.create.mockResolvedValue(saved)
+    await send('POST', '/api/facility-pcs', { ...input, licenseKey: 'abcde-12345-fghij-67890-klmno' })
+    expect(repository.create).toHaveBeenCalledWith(input)
+  })
+
+  it('登録日は送られてきても無視する（DB が自動で記録するため）', async () => {
+    const { repository, send } = setup()
+    repository.create.mockResolvedValue(saved)
+    await send('POST', '/api/facility-pcs', { ...input, registeredOn: '2000-01-01' })
+    expect(repository.create).toHaveBeenCalledWith(input)
+  })
+
   it('入力エラーは 400 で項目ごとのメッセージを返す', async () => {
     const { repository, send } = setup()
-    const res = await send('POST', '/api/facility-pcs', { ...input, pcName: '' })
+    const res = await send('POST', '/api/facility-pcs', { ...input, installedOn: '2026-02-30' })
     expect(res.status).toBe(400)
     const body = (await res.json()) as { fieldErrors: Record<string, string[]> }
-    expect(body.fieldErrors.pcName).toEqual(['入力してください'])
+    expect(body.fieldErrors.installedOn).toEqual(['存在しない日付です'])
+    expect(repository.create).not.toHaveBeenCalled()
+  })
+
+  it('全項目が空欄なら 400 で、項目に属さないエラーをメッセージとして返す', async () => {
+    const { repository, send } = setup()
+    const res = await send('POST', '/api/facility-pcs', { facilityName: '  ' })
+    expect(res.status).toBe(400)
+    expect(((await res.json()) as { message: string }).message).toBe('いずれかの項目を入力してください')
     expect(repository.create).not.toHaveBeenCalled()
   })
 
@@ -191,6 +220,14 @@ describe('PUT /api/facility-pcs/:id', () => {
   it('入力エラーは 400', async () => {
     const { send } = setup()
     expect((await send('PUT', '/api/facility-pcs/1', { ...input, officeType: 'Home' })).status).toBe(400)
+  })
+
+  it('全項目を空欄にする更新も 400（中身が空の行を作らないため、登録と同じく禁止する）', async () => {
+    const { repository, send } = setup()
+    const res = await send('PUT', '/api/facility-pcs/1', {})
+    expect(res.status).toBe(400)
+    expect(((await res.json()) as { message: string }).message).toBe('いずれかの項目を入力してください')
+    expect(repository.update).not.toHaveBeenCalled()
   })
 
   it('存在しなければ 404', async () => {

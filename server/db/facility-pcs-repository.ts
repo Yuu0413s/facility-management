@@ -29,6 +29,7 @@ type Sql = NeonQueryFunction<false, false>
 const UNIQUE_VIOLATION = '23505'
 
 // 並び順は DB の既定の照合順序に任せず、文字コード順（COLLATE "C"）を明示する（設計 7-6）
+// 登録日は、サーバー（UTC）ではなく日本時間の日付にする
 // DATE 型はドライバが JS の Date に変換してタイムゾーンでずれるため、文字列で取り出す
 const COLUMNS = `
   id,
@@ -41,14 +42,22 @@ const COLUMNS = `
   license_key AS "licenseKey",
   account,
   password,
-  remarks
+  remarks,
+  to_char(created_at AT TIME ZONE 'Asia/Tokyo', 'YYYY-MM-DD') AS "registeredOn"
 `
 
-// 並べ替えの列名はプレースホルダにできないため、許可済みの対応表からだけ組み立てる。
-// 2列目は同じ値が並んだときの順番（施設名順なら PC名、PC名順なら施設名）
-const SORT_COLUMNS: Record<SortKey, [primary: string, secondary: string]> = {
-  facilityName: ['facility_name', 'pc_name'],
-  pcName: ['pc_name', 'facility_name'],
+// 並べ替えの列はプレースホルダにできないため、許可済みの対応表からだけ組み立てる。
+// primary: 並べ替える列の式。文字列の列だけ COLLATE "C"（文字コード順）を付ける（DATE・TIMESTAMPTZ には付けられない）
+// ties: 同じ値が並んだときの順番（常に昇順）
+// 空欄（NULL）は昇順・降順どちらでも最後に並べる（PostgreSQL の既定では降順で先頭になるため NULLS LAST を明示）
+const BY_FACILITY_NAME = 'facility_name COLLATE "C" ASC NULLS LAST'
+const BY_PC_NAME = 'pc_name COLLATE "C" ASC NULLS LAST'
+const SORT_ORDERS: Record<SortKey, { primary: string; ties: string }> = {
+  facilityName: { primary: 'facility_name COLLATE "C"', ties: BY_PC_NAME },
+  pcName: { primary: 'pc_name COLLATE "C"', ties: BY_FACILITY_NAME },
+  installedOn: { primary: 'installed_on', ties: `${BY_FACILITY_NAME}, ${BY_PC_NAME}` },
+  // 画面には日付だけを出すが、並べ替えは登録日時そのもので行い、同じ日の中も登録した順に並べる
+  registeredOn: { primary: 'created_at', ties: `${BY_FACILITY_NAME}, ${BY_PC_NAME}` },
 }
 
 // LIKE の特殊文字（\ % _）を普通の文字として扱う
@@ -68,14 +77,14 @@ export const createFacilityPcRepository = (sql: Sql): FacilityPcRepository => ({
     const where = `WHERE ($1::text IS NULL OR facility_name ILIKE $1 ESCAPE '\\')`
     // ORDER BY の方向はプレースホルダにできないため、許可済みの2値からだけ組み立てる
     const direction = order === 'desc' ? 'DESC' : 'ASC'
-    const [primary, secondary] = SORT_COLUMNS[sort]
+    const { primary, ties } = SORT_ORDERS[sort]
 
     // RepeatableRead で2本の SELECT に同じ時点のデータを見せ、items と total の食い違いを防ぐ
     const [items, counts] = await sql.transaction(
       [
         sql.query(
           `SELECT ${COLUMNS} FROM facility_pcs ${where}
-           ORDER BY ${primary} COLLATE "C" ${direction}, ${secondary} COLLATE "C" ASC, id ASC
+           ORDER BY ${primary} ${direction} NULLS LAST, ${ties}, id ASC
            LIMIT $2 OFFSET $3`,
           [pattern, PER_PAGE, (page - 1) * PER_PAGE],
         ),
@@ -88,7 +97,7 @@ export const createFacilityPcRepository = (sql: Sql): FacilityPcRepository => ({
   },
 
   async listAll() {
-    const rows = await sql.query(`SELECT ${COLUMNS} FROM facility_pcs ORDER BY facility_name COLLATE "C" ASC, pc_name COLLATE "C" ASC, id ASC`)
+    const rows = await sql.query(`SELECT ${COLUMNS} FROM facility_pcs ORDER BY ${BY_FACILITY_NAME}, ${BY_PC_NAME}, id ASC`)
     return rows as FacilityPc[]
   },
 

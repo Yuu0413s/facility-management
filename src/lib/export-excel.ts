@@ -1,12 +1,13 @@
-import type { FacilityPc, FacilityPcInput } from '../../shared/facility-pc-schema'
+import type { FacilityPc } from '../../shared/facility-pc-schema'
 import { fetchAllFacilityPcs } from '../api/facility-pcs-client'
 import { toDisplayDate } from './date'
+import { formatProductKey } from './product-key'
 import { FACILITY_PC_FIELDS, FACILITY_PC_LABELS } from './facility-pc-labels'
 
 export type ExportKind = 'all' | 'account'
 
 // 出力の種類ごとのシート名（ファイル名にも使う）と列
-const EXPORT_DEFINITIONS: Record<ExportKind, { sheetName: string; fields: Array<keyof FacilityPcInput> }> = {
+const EXPORT_DEFINITIONS: Record<ExportKind, { sheetName: string; fields: Array<(typeof FACILITY_PC_FIELDS)[number]> }> = {
   all: { sheetName: '施設PC一覧', fields: FACILITY_PC_FIELDS },
   account: { sheetName: 'アカウント情報', fields: ['pcName', 'account', 'password'] },
 }
@@ -26,7 +27,14 @@ export const buildFacilityPcWorkbook = async (rows: FacilityPc[], kind: ExportKi
   sheet.getRow(1).font = { bold: true }
 
   for (const row of rows) {
-    sheet.addRow({ ...row, installedOn: toDisplayDate(row.installedOn), remarks: row.remarks ?? '' })
+    // 空欄（null）の項目は空のセルにする
+    const cells = Object.fromEntries(fields.map((field) => [field, row[field] ?? '']))
+    sheet.addRow({
+      ...cells,
+      installedOn: toDisplayDate(row.installedOn),
+      registeredOn: toDisplayDate(row.registeredOn),
+      licenseKey: formatProductKey(row.licenseKey),
+    })
   }
   if (fields.includes('remarks')) {
     sheet.getColumn('remarks').alignment = { wrapText: true, vertical: 'top' }

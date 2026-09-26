@@ -18,7 +18,9 @@ const NOT_FOUND = { message: '該当するデータが見つかりません' }
 const validate = <Target extends 'json' | 'query', Schema extends z.ZodType>(target: Target, schema: Schema) =>
   zValidator(target, schema, (result, c) => {
     if (!result.success) {
-      return c.json({ message: '入力内容に誤りがあります', fieldErrors: z.flattenError(result.error).fieldErrors }, 400)
+      const { formErrors, fieldErrors } = z.flattenError(result.error)
+      // 「いずれかの項目を入力してください」のように、特定の項目に属さないエラーはメッセージとして返す
+      return c.json({ message: formErrors[0] ?? '入力内容に誤りがあります', fieldErrors }, 400)
     }
   })
 

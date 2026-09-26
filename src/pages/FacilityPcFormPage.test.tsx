@@ -20,10 +20,11 @@ const saved: FacilityPc = {
   osVersion: 'Windows 11',
   officeType: 'H&B',
   officeVersion: '2021',
-  licenseKey: 'KEY-1',
+  licenseKey: 'ABCDE12345FGHIJ67890KLMNO',
   account: 'user1',
   password: 'secret',
   remarks: '1行目\n2行目',
+  registeredOn: '2026-09-20',
 }
 
 function ListStub() {
@@ -46,11 +47,11 @@ const fillAll = async () => {
   const user = userEvent.setup()
   await user.type(screen.getByLabelText('施設名'), ' 中央病院 ')
   await user.type(screen.getByLabelText('PC名'), 'PC-001')
-  await user.type(screen.getByLabelText('設置日'), '2026/9/26')
+  await user.type(screen.getByLabelText('設置日'), '20260926')
   await user.type(screen.getByLabelText('OSバージョン'), 'Windows 11')
   await user.selectOptions(screen.getByLabelText('Office種類'), 'H&B')
   await user.selectOptions(screen.getByLabelText('Officeバージョン'), '2021')
-  await user.type(screen.getByLabelText('Key'), 'KEY-1')
+  await user.type(screen.getByLabelText('Key'), 'abcde-12345-fghij-67890-klmno')
   await user.type(screen.getByLabelText('アカウント'), 'user1')
   await user.type(screen.getByLabelText('パスワード'), 'secret')
   await user.type(screen.getByLabelText('備考'), '1行目{Enter}2行目')
@@ -66,7 +67,7 @@ describe('FacilityPcFormPage（新規登録）', () => {
     const user = await fillAll()
     await user.click(screen.getByRole('button', { name: '登録する' }))
 
-    expect(createFacilityPc).toHaveBeenCalledWith({ ...saved, id: undefined })
+    expect(createFacilityPc).toHaveBeenCalledWith({ ...saved, id: undefined, registeredOn: undefined })
     expect(await screen.findByText('一覧ページ ?order=desc&page=2')).toBeInTheDocument()
   })
 
@@ -78,29 +79,92 @@ describe('FacilityPcFormPage（新規登録）', () => {
     expect(options('Officeバージョン')).toEqual(['', '2010', '2013', '2016', '2019', '2021', '2024'])
   })
 
-  it('未入力のまま送信すると、API を呼ばずに項目ごとのエラーを表示する', async () => {
+  it('全項目が空欄のまま送信すると、API を呼ばずにフォームの上にエラーを表示する', async () => {
     renderPage('/new')
     await userEvent.click(screen.getByRole('button', { name: '登録する' }))
     expect(createFacilityPc).not.toHaveBeenCalled()
-    expect(screen.getByLabelText('施設名')).toHaveAccessibleDescription('入力してください')
-    expect(screen.getByLabelText('Office種類')).toHaveAccessibleDescription('選択してください')
-    expect(screen.getByLabelText('備考')).not.toHaveAttribute('aria-invalid', 'true')
+    expect(screen.getByRole('alert')).toHaveTextContent('いずれかの項目を入力してください')
+    expect(screen.getByLabelText('施設名')).not.toHaveAttribute('aria-invalid', 'true')
+  })
+
+  it('施設名とPC名だけで登録でき、空欄の項目は null で送る', async () => {
+    vi.mocked(createFacilityPc).mockResolvedValue(saved)
+    renderPage('/new')
+    const user = userEvent.setup()
+    await user.type(screen.getByLabelText('施設名'), '中央病院')
+    await user.type(screen.getByLabelText('PC名'), 'PC-001')
+    await user.click(screen.getByRole('button', { name: '登録する' }))
+
+    expect(createFacilityPc).toHaveBeenCalledWith({
+      facilityName: '中央病院',
+      pcName: 'PC-001',
+      installedOn: null,
+      osVersion: null,
+      officeType: null,
+      officeVersion: null,
+      licenseKey: null,
+      account: null,
+      password: null,
+      remarks: null,
+    })
+  })
+
+  it('必須・任意のバッジを表示しない（全項目が任意のため）', () => {
+    renderPage('/new')
+    expect(screen.queryByText('必須')).not.toBeInTheDocument()
+    expect(screen.queryByText('任意')).not.toBeInTheDocument()
+  })
+
+  it('設置日の見本の文字は yyyymmdd、Key はハイフンなし25桁', () => {
+    renderPage('/new')
+    expect(screen.getByLabelText('設置日')).toHaveAttribute('placeholder', 'yyyymmdd')
+    expect(screen.getByLabelText('Key')).toHaveAttribute('placeholder', '英数字25桁（ハイフンなし）')
+  })
+
+  // yyyy-mm-dd は API のやり取りの形式と同じなので、画面側で弾かないとそのまま通ってしまう
+  it.each(['2026/09/26', '2026-09-26', '2026926'])('設置日の %s（8桁の数字でない形）は受け付けない', async (typed) => {
+    renderPage('/new')
+    const user = await fillAll()
+    await user.clear(screen.getByLabelText('設置日'))
+    await user.type(screen.getByLabelText('設置日'), typed)
+    await user.click(screen.getByRole('button', { name: '登録する' }))
+    expect(screen.getByLabelText('設置日')).toHaveAccessibleDescription('yyyymmdd（8桁の数字）で入力してください')
+    expect(createFacilityPc).not.toHaveBeenCalled()
+  })
+
+  it('Key が英数字25桁でなければ、API を呼ばずに Key の欄にエラーを表示する', async () => {
+    renderPage('/new')
+    const user = await fillAll()
+    await user.clear(screen.getByLabelText('Key'))
+    await user.type(screen.getByLabelText('Key'), 'ABCDE12345')
+    await user.click(screen.getByRole('button', { name: '登録する' }))
+    expect(screen.getByLabelText('Key')).toHaveAccessibleDescription('Key は英数字25桁で入力してください')
+    expect(createFacilityPc).not.toHaveBeenCalled()
+  })
+
+  it('設置日を全角の数字で入力しても登録できる', async () => {
+    vi.mocked(createFacilityPc).mockResolvedValue(saved)
+    renderPage('/new')
+    const user = userEvent.setup()
+    await user.type(screen.getByLabelText('設置日'), '２０２６０９２６')
+    await user.click(screen.getByRole('button', { name: '登録する' }))
+    expect(createFacilityPc).toHaveBeenCalledWith(expect.objectContaining({ installedOn: '2026-09-26' }))
   })
 
   it('存在しない日付はエラーにする', async () => {
     renderPage('/new')
     const user = await fillAll()
     await user.clear(screen.getByLabelText('設置日'))
-    await user.type(screen.getByLabelText('設置日'), '2026/02/30')
+    await user.type(screen.getByLabelText('設置日'), '20260230')
     await user.click(screen.getByRole('button', { name: '登録する' }))
     expect(screen.getByLabelText('設置日')).toHaveAccessibleDescription('存在しない日付です')
     expect(createFacilityPc).not.toHaveBeenCalled()
   })
 
-  it('カレンダーで選んだ日付を yyyy/mm/dd で入力欄に反映する', () => {
+  it('カレンダーで選んだ日付を yyyymmdd で入力欄に反映する', () => {
     renderPage('/new')
     fireEvent.change(screen.getByLabelText('カレンダーから選択'), { target: { value: '2026-09-26' } })
-    expect(screen.getByLabelText('設置日')).toHaveValue('2026/09/26')
+    expect(screen.getByLabelText('設置日')).toHaveValue('20260926')
   })
 
   it('備考の文字数を表示する', async () => {
@@ -135,7 +199,7 @@ describe('FacilityPcFormPage（編集）', () => {
 
     expect(await screen.findByDisplayValue('中央病院')).toBeInTheDocument()
     expect(fetchFacilityPc).toHaveBeenCalledWith(7)
-    expect(screen.getByLabelText('設置日')).toHaveValue('2026/09/26')
+    expect(screen.getByLabelText('設置日')).toHaveValue('20260926')
     expect(screen.getByLabelText('備考')).toHaveValue('1行目\n2行目')
 
     const user = userEvent.setup()
@@ -143,9 +207,41 @@ describe('FacilityPcFormPage（編集）', () => {
     await user.type(screen.getByLabelText('OSバージョン'), 'Windows 11 24H2')
     await user.click(screen.getByRole('button', { name: '更新する' }))
 
-    const { id: _, ...input } = saved
+    const { id: _, registeredOn: __, ...input } = saved
     expect(updateFacilityPc).toHaveBeenCalledWith(7, { ...input, osVersion: 'Windows 11 24H2' })
     expect(await screen.findByText(/一覧ページ/)).toBeInTheDocument()
+  })
+
+  it('全項目を消して更新しようとすると、API を呼ばずにエラーを表示する（削除を使ってもらう）', async () => {
+    vi.mocked(fetchFacilityPc).mockResolvedValue(saved)
+    renderPage('/edit/7')
+    await screen.findByDisplayValue('中央病院')
+    const user = userEvent.setup()
+    for (const label of ['施設名', 'PC名', '設置日', 'OSバージョン', 'Key', 'アカウント', 'パスワード', '備考']) {
+      await user.clear(screen.getByLabelText(label))
+    }
+    await user.selectOptions(screen.getByLabelText('Office種類'), '')
+    await user.selectOptions(screen.getByLabelText('Officeバージョン'), '')
+    await user.click(screen.getByRole('button', { name: '更新する' }))
+
+    expect(screen.getByRole('alert')).toHaveTextContent('いずれかの項目を入力してください')
+    expect(updateFacilityPc).not.toHaveBeenCalled()
+  })
+
+  it('空欄の項目がある既存データは、空の入力欄として表示する', async () => {
+    vi.mocked(fetchFacilityPc).mockResolvedValue({
+      ...saved,
+      installedOn: null,
+      officeType: null,
+      licenseKey: null,
+      remarks: null,
+    })
+    renderPage('/edit/7')
+    expect(await screen.findByDisplayValue('中央病院')).toBeInTheDocument()
+    expect(screen.getByLabelText('設置日')).toHaveValue('')
+    expect(screen.getByLabelText('Office種類')).toHaveValue('')
+    expect(screen.getByLabelText('Key')).toHaveValue('')
+    expect(screen.getByLabelText('備考')).toHaveValue('')
   })
 
   it('データが見つからなければメッセージを表示する', async () => {

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'rea
 import { Link, useLocation, useNavigate, useParams } from 'react-router'
 import { z } from 'zod'
 import {
+  DATE_INPUT_FORMAT_MESSAGE,
   OFFICE_TYPES,
   OFFICE_VERSIONS,
   REMARKS_MAX_LENGTH,
@@ -10,7 +11,7 @@ import {
   type FacilityPcInput,
 } from '../../shared/facility-pc-schema'
 import { ApiError, createFacilityPc, fetchFacilityPc, updateFacilityPc, type FieldErrors } from '../api/facility-pcs-client'
-import { toDisplayDate, toIsoDate } from '../lib/date'
+import { isDateInputFormat, toInputDate, toIsoDate } from '../lib/date'
 import { FACILITY_PC_LABELS as LABELS } from '../lib/facility-pc-labels'
 
 type Field = keyof FacilityPcInput
@@ -29,10 +30,10 @@ const EMPTY_VALUES: FormValues = {
   remarks: '',
 }
 
-const toFormValues = ({ id: _, ...pc }: FacilityPc): FormValues => ({
-  ...pc,
-  installedOn: toDisplayDate(pc.installedOn),
-  remarks: pc.remarks ?? '',
+// 空欄（null）の項目は、空の入力欄として表示する
+const toFormValues = ({ id: _, registeredOn: __, ...pc }: FacilityPc): FormValues => ({
+  ...(Object.fromEntries(Object.entries(pc).map(([field, value]) => [field, value ?? ''])) as FormValues),
+  installedOn: toInputDate(pc.installedOn),
 })
 
 const errorMessage = (error: unknown) => (error instanceof Error ? error.message : '予期しないエラーが発生しました')
@@ -75,8 +76,14 @@ export function FacilityPcFormPage() {
 
     // サーバーと同じ Zod スキーマで先に確認し、明らかな入力ミスは通信せずに知らせる
     const parsed = facilityPcInputSchema.safeParse({ ...values, installedOn: toIsoDate(values.installedOn) })
-    if (!parsed.success) {
-      setFieldErrors(z.flattenError(parsed.error).fieldErrors)
+    // 入力欄は yyyymmdd だけを受け付ける。スキーマは API 用の yyyy-mm-dd を正しい形とするため、
+    // 入力欄に yyyy-mm-dd と打たれるとすり抜けてしまう。入力欄の形式はここで確かめる
+    const hasInvalidDateFormat = values.installedOn.trim() !== '' && !isDateInputFormat(values.installedOn)
+    if (!parsed.success || hasInvalidDateFormat) {
+      const { formErrors, fieldErrors } = parsed.success ? { formErrors: [], fieldErrors: {} } : z.flattenError(parsed.error)
+      setFieldErrors(hasInvalidDateFormat ? { ...fieldErrors, installedOn: [DATE_INPUT_FORMAT_MESSAGE] } : fieldErrors)
+      // 「いずれかの項目を入力してください」は特定の項目に属さないので、フォームの上に出す
+      setFormError(formErrors[0] ?? null)
       return
     }
     setFieldErrors({})
@@ -129,10 +136,16 @@ export function FacilityPcFormPage() {
     )
   }
 
-  const textField = (field: Field, type: 'text' | 'password' = 'text') => (
+  const textField = (field: Field, placeholder?: string) => (
     <FormField field={field} errors={fieldErrors[field]}>
       {(props) => (
-        <input {...props} type={type} value={values[field]} onChange={(event) => setValue(field, event.target.value)} />
+        <input
+          {...props}
+          type="text"
+          placeholder={placeholder}
+          value={values[field]}
+          onChange={(event) => setValue(field, event.target.value)}
+        />
       )}
     </FormField>
   )
@@ -174,7 +187,7 @@ export function FacilityPcFormPage() {
                 {...props}
                 type="text"
                 inputMode="numeric"
-                placeholder="yyyy/mm/dd"
+                placeholder="yyyymmdd"
                 value={values.installedOn}
                 onChange={(event) => setValue('installedOn', event.target.value)}
               />
@@ -188,7 +201,7 @@ export function FacilityPcFormPage() {
                 aria-label="カレンダーから選択"
                 tabIndex={-1}
                 value={/^\d{4}-\d{2}-\d{2}$/.test(isoInstalledOn) ? isoInstalledOn : ''}
-                onChange={(event) => event.target.value && setValue('installedOn', toDisplayDate(event.target.value))}
+                onChange={(event) => event.target.value && setValue('installedOn', toInputDate(event.target.value))}
               />
             </div>
           )}
@@ -197,11 +210,11 @@ export function FacilityPcFormPage() {
         {textField('osVersion')}
         {selectField('officeType', OFFICE_TYPES)}
         {selectField('officeVersion', OFFICE_VERSIONS)}
-        {textField('licenseKey')}
+        {textField('licenseKey', '英数字25桁（ハイフンなし）')}
         {textField('account')}
         {textField('password')}
 
-        <FormField field="remarks" errors={fieldErrors.remarks} optional>
+        <FormField field="remarks" errors={fieldErrors.remarks}>
           {(props) => (
             <>
               <textarea
@@ -233,12 +246,10 @@ type ControlProps = { id: string; 'aria-invalid': boolean; 'aria-describedby'?: 
 function FormField({
   field,
   errors,
-  optional = false,
   children,
 }: {
   field: Field
   errors?: string[]
-  optional?: boolean
   children: (props: ControlProps) => ReactNode
 }) {
   const controlId = `field-${field}`
@@ -249,7 +260,6 @@ function FormField({
     <div className="form-field">
       <div className="field-label">
         <label htmlFor={controlId}>{LABELS[field]}</label>
-        <span className={optional ? 'badge optional' : 'badge required'}>{optional ? '任意' : '必須'}</span>
       </div>
       {children({ id: controlId, 'aria-invalid': hasError, 'aria-describedby': hasError ? errorId : undefined })}
       {hasError && (

@@ -21,19 +21,19 @@
 
 | 機能 | 仕様 |
 |---|---|
-| 登録 | 11項目を入力して登録 |
-| 一覧表示 | 表形式。PCのみ対応（収まらない場合は横スクロール） |
+| 登録 | 10項目を入力して登録。全項目が任意（何か1項目は必要） |
+| 一覧表示 | 表形式。PCのみ対応（収まらない場合は横スクロール。操作列は右端に固定して常に表示）。パスワードと備考の間に「登録日」（登録日時の日本時間の日付、yyyy/mm/dd）を表示 |
 | 編集 | 登録済みデータの修正 |
 | 削除 | 確認ダイアログあり |
-| ソート | 施設名・PC名。列見出しクリックで昇順／降順を切り替え（別の列を押すとその列の昇順から）。並び順は文字コード順（五十音順ではない）。同じ値どうしは、施設名順ならPC名の昇順、PC名順なら施設名の昇順 |
+| ソート | 施設名・PC名・設置日・登録日。列見出しクリックで昇順／降順を切り替え（別の列を押すとその列の昇順から）。文字列は文字コード順（五十音順ではない）。空欄は昇順・降順どちらでも最後。同じ値どうしは、施設名順ならPC名、PC名順なら施設名、設置日・登録日順なら施設名→PC名の昇順。登録日は登録日時（created_at）そのもので並べる |
 | 検索 | 施設名の部分一致。検索語を変えたら1ページ目に戻る |
 | ページ分割 | 1ページ50件 |
-| パスワード・Keyの表示 | 「●●●●」で隠し、クリックで表示 |
-| Excel出力 | `.xlsx`。「Excel出力」ボタンのメニューから2種類を選ぶ。どちらも常に全件（施設名→PC名順）<br>・全件出力：全10項目（パスワード・Keyも含める）。`施設PC一覧_yyyymmdd.xlsx`<br>・アカウント情報出力：PC名・アカウント・パスワードの3列。`アカウント情報_yyyymmdd.xlsx` |
+| パスワード・Keyの表示 | 「●●●●」で隠し、クリックで表示。Key は5桁ごとにハイフンを入れて表示（25桁の英数字でない既存データはそのまま） |
+| Excel出力 | `.xlsx`。「Excel出力」ボタンのメニューから2種類を選ぶ。どちらも常に全件（施設名→PC名順）<br>・全件出力：全10項目＋登録日（パスワード・Keyも含める。登録日はパスワードと備考の間）。`施設PC一覧_yyyymmdd.xlsx`<br>・アカウント情報出力：PC名・アカウント・パスワードの3列。`アカウント情報_yyyymmdd.xlsx` |
 
 ### MVPに含めない
 
-- 施設名以外での検索、施設名・PC名以外でのソート
+- 施設名以外での検索、施設名・PC名・設置日・登録日以外でのソート
 - 変更履歴
 - 同時編集の検知（後から保存した内容で上書き。利用者2名のため許容）
 - ログアウト機能・利用者ごとの識別（Basic認証のため。許容）
@@ -54,22 +54,22 @@
   └── [保存] → 一覧ページへ戻る
 ```
 
-設置日の入力欄: テキスト入力（`yyyy/mm/dd`）＋ カレンダーボタン（ブラウザ標準の日付選択を開く）。ライブラリは使わない。
+設置日の入力欄: テキスト入力（`yyyymmdd` の8桁のみ。全角の数字は半角にそろえて受け付ける）＋ カレンダーボタン（ブラウザ標準の日付選択を開き、選んだ日付を `yyyymmdd` で入力欄に入れる）。ライブラリは使わない。一覧・Excel での表示は `yyyy/mm/dd`。
 
 ## 6. データ構造
 
 ```sql
 CREATE TABLE facility_pcs (
   id              INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-  facility_name   TEXT NOT NULL,
-  pc_name         TEXT NOT NULL,
-  installed_on    DATE NOT NULL,
-  os_version      TEXT NOT NULL,
-  office_type     TEXT NOT NULL CHECK (office_type IN ('Personal','H&B','Pro','Access')),
-  office_version  TEXT NOT NULL CHECK (office_version IN ('2010','2013','2016','2019','2021','2024')),
-  license_key     TEXT NOT NULL,
-  account         TEXT NOT NULL,
-  password        TEXT NOT NULL,
+  facility_name   TEXT,
+  pc_name         TEXT,
+  installed_on    DATE,
+  os_version      TEXT,
+  office_type     TEXT CHECK (office_type IN ('Personal','H&B','Pro','Access')),
+  office_version  TEXT CHECK (office_version IN ('2010','2013','2016','2019','2021','2024')),
+  license_key     TEXT,
+  account         TEXT,
+  password        TEXT,
   remarks         TEXT CHECK (char_length(remarks) <= 500),
   created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -81,13 +81,14 @@ CREATE TABLE facility_pcs (
 |---|---|
 | テーブル構成 | 1テーブルのみ。リレーションなし |
 | ID | 連番 |
-| 必須項目 | 備考以外すべて |
-| 重複 | 「施設名＋PC名」の組み合わせの重複を禁止 |
+| 必須項目 | なし（全項目が任意）。ただし全項目が空欄の登録は不可（アプリ側でチェック）。空欄は NULL で保存 |
+| 重複 | 「施設名＋PC名」の組み合わせの重複を禁止。どちらかが空欄（NULL）の行は対象外 |
 | 空白 | 保存前に前後の空白を除去（重複判定をすり抜けないため） |
 | 備考 | 複数行可、500文字以内 |
+| Key | Microsoft のプロダクトキー（英数字25桁）。ハイフン付き・小文字・全角で入力されても、半角にそろえ（NFKC 正規化）ハイフンを除き大文字にして、ハイフンなしで保存。表示（一覧・Excel）時に5桁ごとにハイフンを入れる。形式チェックはアプリ側のみ |
 | パスワード | 平文で保存 |
 | 登録・更新日時 | DBに記録する（画面には表示しない）。`updated_at` は UPDATE 文で `now()` を設定 |
-| マイグレーション | ツールは使わない。`db/schema.sql` を Neon の SQL Editor で実行 |
+| マイグレーション | ツールは使わない。新規環境は `db/schema.sql`、既存環境は `db/migrations/` を番号順に Neon の SQL Editor で実行（アプリのデプロイより先に） |
 
 ## 7. API設計
 
@@ -107,7 +108,7 @@ CREATE TABLE facility_pcs (
 | パラメータ | 意味 | 既定値 |
 |---|---|---|
 | `q` | 施設名の部分一致（`%` `_` はエスケープ） | なし |
-| `sort` | `facilityName` / `pcName` | `facilityName` |
+| `sort` | `facilityName` / `pcName` / `installedOn` / `registeredOn` | `facilityName` |
 | `order` | `asc` / `desc` | `asc` |
 | `page` | 1始まり | `1` |
 
@@ -122,7 +123,8 @@ CREATE TABLE facility_pcs (
 }
 ```
 
-- 日付はAPIでは `yyyy-mm-dd`、画面表示は `yyyy/mm/dd`
+- 日付はAPIでは `yyyy-mm-dd`、画面の入力欄は `yyyymmdd`、画面表示は `yyyy/mm/dd`
+- レスポンスの各行に `registeredOn`（`created_at` を日本時間に変換した日付。`yyyy-mm-dd`）を含める。登録・更新のリクエストでは受け付けない（送られても無視）
 - 入力チェックは Zod（`@hono/zod-validator`）。スキーマは画面とサーバーで共用
 - Excel（`.xlsx`）はブラウザ側で ExcelJS を使って生成（出力時のみ動的import）
 

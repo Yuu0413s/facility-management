@@ -12,6 +12,7 @@ import { deleteFacilityPc, fetchFacilityPcPage } from '../api/facility-pcs-clien
 import { Pagination } from '../components/Pagination'
 import { SecretCell } from '../components/SecretCell'
 import { toDisplayDate } from '../lib/date'
+import { formatProductKey } from '../lib/product-key'
 import { exportFacilityPcsToExcel, type ExportKind } from '../lib/export-excel'
 import { FACILITY_PC_LABELS as LABELS } from '../lib/facility-pc-labels'
 
@@ -79,7 +80,8 @@ export function FacilityPcListPage() {
   }
 
   const handleDelete = async (pc: FacilityPc) => {
-    if (!window.confirm(`「${pc.facilityName} / ${pc.pcName}」を削除します。よろしいですか？`)) return
+    const orBlank = (value: string | null) => value ?? '（未入力）'
+    if (!window.confirm(`「${orBlank(pc.facilityName)} / ${orBlank(pc.pcName)}」を削除します。よろしいですか？`)) return
     try {
       await deleteFacilityPc(pc.id)
       setReloadCount((count) => count + 1)
@@ -140,21 +142,22 @@ export function FacilityPcListPage() {
                 <tr>
                   <SortableHeader column="facilityName" sort={sort} order={order} onSort={updateQuery} />
                   <SortableHeader column="pcName" sort={sort} order={order} onSort={updateQuery} />
-                  <th>{LABELS.installedOn}</th>
+                  <SortableHeader column="installedOn" sort={sort} order={order} onSort={updateQuery} />
                   <th>{LABELS.osVersion}</th>
                   <th>{LABELS.officeType}</th>
                   <th>{LABELS.officeVersion}</th>
                   <th>{LABELS.licenseKey}</th>
                   <th>{LABELS.account}</th>
                   <th>{LABELS.password}</th>
+                  <SortableHeader column="registeredOn" sort={sort} order={order} onSort={updateQuery} />
                   <th>{LABELS.remarks}</th>
-                  <th>操作</th>
+                  <th className="actions-column">操作</th>
                 </tr>
               </thead>
               <tbody>
                 {result.items.length === 0 ? (
                   <tr>
-                    <td colSpan={11} className="empty">
+                    <td colSpan={12} className="empty">
                       登録されたデータはありません
                     </td>
                   </tr>
@@ -168,20 +171,23 @@ export function FacilityPcListPage() {
                       <td>{pc.officeType}</td>
                       <td>{pc.officeVersion}</td>
                       <td>
-                        <SecretCell value={pc.licenseKey} label={LABELS.licenseKey} />
+                        {pc.licenseKey && <SecretCell value={formatProductKey(pc.licenseKey)} label={LABELS.licenseKey} />}
                       </td>
                       <td>{pc.account}</td>
                       <td>
-                        <SecretCell value={pc.password} label={LABELS.password} />
+                        {pc.password && <SecretCell value={pc.password} label={LABELS.password} />}
                       </td>
+                      <td>{toDisplayDate(pc.registeredOn)}</td>
                       <td className="remarks">{pc.remarks}</td>
-                      <td className="row-actions">
-                        <Link to={`/edit/${pc.id}`} state={{ returnTo }}>
-                          編集
-                        </Link>
-                        <button type="button" className="danger" onClick={() => handleDelete(pc)}>
-                          削除
-                        </button>
+                      <td className="actions-column">
+                        <div className="row-actions">
+                          <Link to={`/edit/${pc.id}`} state={{ returnTo }}>
+                            編集
+                          </Link>
+                          <button type="button" className="danger" onClick={() => handleDelete(pc)}>
+                            削除
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))

@@ -21,10 +21,11 @@ const pc: FacilityPc = {
   osVersion: 'Windows 11',
   officeType: 'H&B',
   officeVersion: '2021',
-  licenseKey: 'KEY-SECRET',
+  licenseKey: 'ABCDE12345FGHIJ67890KLMNO',
   account: 'user1',
   password: 'PASSWORD-SECRET',
   remarks: 'メモ',
+  registeredOn: '2026-09-20',
 }
 const pageOf = (items: FacilityPc[], overrides: Partial<FacilityPcPage> = {}): FacilityPcPage => ({
   items,
@@ -78,11 +79,39 @@ describe('FacilityPcListPage', () => {
     renderPage()
     const row = await screen.findByRole('row', { name: /中央病院/ })
     expect(lastQuery()).toEqual({ q: undefined, sort: 'facilityName', order: 'asc', page: 1 })
-    for (const text of ['中央病院', 'PC-001', '2026/09/26', 'Windows 11', 'H&B', '2021', 'user1', 'メモ']) {
+    for (const text of ['中央病院', 'PC-001', '2026/09/26', 'Windows 11', 'H&B', '2021', 'user1', '2026/09/20', 'メモ']) {
       expect(within(row).getByText(text)).toBeInTheDocument()
     }
-    expect(within(row).queryByText('KEY-SECRET')).not.toBeInTheDocument()
+    expect(within(row).queryByText('ABCDE12345FGHIJ67890KLMNO')).not.toBeInTheDocument()
+    expect(within(row).queryByText('ABCDE-12345-FGHIJ-67890-KLMNO')).not.toBeInTheDocument()
     expect(within(row).queryByText('PASSWORD-SECRET')).not.toBeInTheDocument()
+  })
+
+  it('Key は表示ボタンを押すと5桁ごとにハイフンを入れて表示する', async () => {
+    renderPage()
+    const row = await screen.findByRole('row', { name: /中央病院/ })
+    await userEvent.click(within(row).getByRole('button', { name: 'Keyを表示' }))
+    expect(within(row).getByText('ABCDE-12345-FGHIJ-67890-KLMNO')).toBeInTheDocument()
+  })
+
+  it.each([
+    ['設置日', 'installedOn'],
+    ['登録日', 'registeredOn'],
+  ] as const)('%s の見出しを押すとその列の昇順で並べ替え、もう一度押すと降順になる', async (label, sort) => {
+    renderPage()
+    const header = () => screen.findByRole('columnheader', { name: new RegExp(label) })
+    await userEvent.click(within(await header()).getByRole('button'))
+    await waitFor(() => expect(lastQuery()).toEqual({ q: undefined, sort, order: 'asc', page: 1 }))
+    expect(await header()).toHaveAttribute('aria-sort', 'ascending')
+    await userEvent.click(within(await header()).getByRole('button'))
+    await waitFor(() => expect(lastQuery()).toMatchObject({ sort, order: 'desc' }))
+  })
+
+  it('「登録日」の列を「パスワード」と「備考」の間に表示する', async () => {
+    renderPage()
+    await screen.findByRole('row', { name: /中央病院/ })
+    const headers = screen.getAllByRole('columnheader').map((header) => header.textContent?.replace(/[▲▼↕]/g, '').trim())
+    expect(headers.slice(headers.indexOf('パスワード'), headers.indexOf('パスワード') + 3)).toEqual(['パスワード', '登録日', '備考'])
   })
 
   it('施設名の見出しを押すたびに昇順・降順を切り替え、1ページ目に戻る', async () => {
@@ -147,6 +176,37 @@ describe('FacilityPcListPage', () => {
     renderPage()
     await userEvent.click(await screen.findByRole('button', { name: '次へ' }))
     await waitFor(() => expect(lastQuery()).toMatchObject({ page: 2 }))
+  })
+
+  it('空欄の項目は何も表示せず、Keyとパスワードが空欄なら伏せ字も表示ボタンも出さない', async () => {
+    const blank: FacilityPc = {
+      id: 8,
+      facilityName: '西病院',
+      pcName: null,
+      installedOn: null,
+      osVersion: null,
+      officeType: null,
+      officeVersion: null,
+      licenseKey: null,
+      account: null,
+      password: null,
+      remarks: null,
+      registeredOn: '2026-09-26',
+    }
+    vi.mocked(fetchFacilityPcPage).mockResolvedValue(pageOf([blank]))
+    renderPage()
+    const row = await screen.findByRole('row', { name: /西病院/ })
+    expect(within(row).queryByText('●●●●')).not.toBeInTheDocument()
+    expect(within(row).queryByRole('button', { name: /を表示/ })).not.toBeInTheDocument()
+    expect(within(row).queryByText('null')).not.toBeInTheDocument()
+  })
+
+  it('削除の確認では、空欄の施設名・PC名を「（未入力）」と表示する', async () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(false)
+    vi.mocked(fetchFacilityPcPage).mockResolvedValue(pageOf([{ ...pc, pcName: null }]))
+    renderPage()
+    await userEvent.click(await screen.findByRole('button', { name: '削除' }))
+    expect(window.confirm).toHaveBeenCalledWith('「中央病院 / （未入力）」を削除します。よろしいですか？')
   })
 
   it('確認ダイアログで OK したら削除し、一覧を取得し直す', async () => {

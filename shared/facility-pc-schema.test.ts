@@ -25,13 +25,49 @@ describe('facilityPcInputSchema', () => {
     expect(result.pcName).toBe('PC-001')
   })
 
-  it.each(['facilityName', 'pcName', 'installedOn', 'osVersion', 'licenseKey', 'account', 'password'] as const)(
-    '%s が空白だけなら弾く',
-    (field) => {
-      const result = facilityPcInputSchema.safeParse({ ...validInput, [field]: '   ' })
-      expect(result.success).toBe(false)
-    },
-  )
+  it.each([
+    'facilityName',
+    'pcName',
+    'installedOn',
+    'osVersion',
+    'officeType',
+    'officeVersion',
+    'licenseKey',
+    'account',
+    'password',
+  ] as const)('%s は任意入力で、空白だけなら null として受け付ける', (field) => {
+    const result = facilityPcInputSchema.safeParse({ ...validInput, [field]: '   ' })
+    expect(result.success).toBe(true)
+    expect(result.data?.[field]).toBeNull()
+  })
+
+  it('施設名とPC名だけでも登録でき、送られてこない項目は null になる', () => {
+    expect(facilityPcInputSchema.parse({ facilityName: '中央病院', pcName: 'PC-001' })).toEqual({
+      facilityName: '中央病院',
+      pcName: 'PC-001',
+      installedOn: null,
+      osVersion: null,
+      officeType: null,
+      officeVersion: null,
+      licenseKey: null,
+      account: null,
+      password: null,
+      remarks: null,
+    })
+  })
+
+  it('1項目だけでも入力されていれば受け付ける（備考だけでもよい）', () => {
+    expect(facilityPcInputSchema.safeParse({ remarks: 'メモ' }).success).toBe(true)
+  })
+
+  it.each([
+    ['何も送られてこない', {}],
+    ['すべて空白', Object.fromEntries(Object.keys(validInput).map((key) => [key, '  ']))],
+  ])('%s場合は「いずれかの項目を入力してください」だけを返す', (_, input) => {
+    const result = facilityPcInputSchema.safeParse(input)
+    expect(result.success).toBe(false)
+    expect(result.error?.issues.map((issue) => issue.message)).toEqual(['いずれかの項目を入力してください'])
+  })
 
   it('備考は省略でき、空文字は null になる', () => {
     const { remarks: _, ...withoutRemarks } = validInput
@@ -45,11 +81,25 @@ describe('facilityPcInputSchema', () => {
     expect(facilityPcInputSchema.safeParse({ ...validInput, remarks: 'あ'.repeat(501) }).success).toBe(false)
   })
 
-  it('項目が送られてこなかった場合も日本語のメッセージを返す', () => {
-    const result = facilityPcInputSchema.safeParse({})
-    expect(result.success).toBe(false)
-    expect(result.error?.issues.find((issue) => issue.path[0] === 'pcName')?.message).toBe('入力してください')
-    expect(result.error?.issues.find((issue) => issue.path[0] === 'installedOn')?.message).toBe('入力してください')
+  describe('Key（プロダクトキー）', () => {
+    it('ハイフン付き・小文字で入力されても、ハイフンを除いて大文字の25桁にする', () => {
+      const result = facilityPcInputSchema.parse({ ...validInput, licenseKey: ' abcde-12345-fghij-67890-klmno ' })
+      expect(result.licenseKey).toBe('ABCDE12345FGHIJ67890KLMNO')
+    })
+
+    it('全角の英数字・ハイフンは半角にしてから確かめる（日本語入力のまま打った場合）', () => {
+      const result = facilityPcInputSchema.parse({ ...validInput, licenseKey: 'ａｂｃｄｅ１２３４５－ＦＧＨＩＪ６７８９０ＫＬＭＮＯ' })
+      expect(result.licenseKey).toBe('ABCDE12345FGHIJ67890KLMNO')
+    })
+
+    it('ハイフンなしの25桁はそのまま受け付ける', () => {
+      expect(facilityPcInputSchema.parse({ ...validInput, licenseKey: 'ABCDE12345FGHIJ67890KLMNO' }).licenseKey).toBe('ABCDE12345FGHIJ67890KLMNO')
+    })
+
+    it.each(['ABCDE12345FGHIJ67890KLMN', 'ABCDE12345FGHIJ67890KLMNOA', 'ABCDE12345FGHIJ67890KLMN!', '-----'])('%s（英数字25桁でない）は弾く', (licenseKey) => {
+      const result = facilityPcInputSchema.safeParse({ ...validInput, licenseKey })
+      expect(result.error?.issues.map((issue) => issue.message)).toEqual(['Key は英数字25桁で入力してください'])
+    })
   })
 
   it('Office種類は4種以外を弾く', () => {
@@ -64,14 +114,14 @@ describe('facilityPcInputSchema', () => {
     expect(facilityPcInputSchema.safeParse({ ...validInput, installedOn }).success).toBe(false)
   })
 
-  it('設置日が空欄なら「入力してください」だけを返す', () => {
-    const result = facilityPcInputSchema.safeParse({ ...validInput, installedOn: '' })
-    expect(result.error?.issues.map((issue) => issue.message)).toEqual(['入力してください'])
-  })
-
   it('年が 0000 の日付は DB に保存できないので弾く', () => {
     expect(facilityPcInputSchema.safeParse({ ...validInput, installedOn: '0000-01-01' }).success).toBe(false)
     expect(facilityPcInputSchema.safeParse({ ...validInput, installedOn: '0001-01-01' }).success).toBe(true)
+  })
+
+  it('形式が違う設置日には、画面の入力形式（yyyymmdd）でメッセージを返す', () => {
+    const result = facilityPcInputSchema.safeParse({ ...validInput, installedOn: '2026/09/26' })
+    expect(result.error?.issues.map((issue) => issue.message)).toEqual(['yyyymmdd（8桁の数字）で入力してください'])
   })
 
   it('うるう日を受け付ける', () => {
@@ -101,7 +151,11 @@ describe('listQuerySchema', () => {
     expect(listQuerySchema.safeParse({ page }).success).toBe(false)
   })
 
-  it('sort は施設名・PC名以外を弾く（列名を SQL に埋め込むため）', () => {
+  it.each(['installedOn', 'registeredOn'] as const)('sort=%s（設置日・登録日）を受け付ける', (sort) => {
+    expect(listQuerySchema.parse({ sort }).sort).toBe(sort)
+  })
+
+  it('sort は決められた列以外を弾く（列名を SQL に埋め込むため）', () => {
     expect(listQuerySchema.safeParse({ sort: 'password' }).success).toBe(false)
     expect(listQuerySchema.safeParse({ sort: 'pc_name; DROP TABLE facility_pcs' }).success).toBe(false)
   })

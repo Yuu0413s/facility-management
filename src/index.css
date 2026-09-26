@@ -171,6 +171,22 @@ td.empty {
   color: var(--color-muted);
 }
 
+/* 操作列は横スクロールしても右端に固定し、編集・削除ボタンを常に見えるようにする */
+.actions-column {
+  position: sticky;
+  right: 0;
+  z-index: 1;
+  background: var(--color-surface);
+  /* 固定した列の下を他の列が流れていくので、左側に区切り線を付けて境目を分かりやすくする */
+  box-shadow: inset 1px 0 0 var(--color-border);
+}
+
+th.actions-column {
+  background: var(--color-bg);
+}
+
+/* td 自体を flex にすると表のセルではなくなり、行の高さに合わせて伸びなくなる（区切り線がずれる）ため、
+   中の div を flex にする */
 .row-actions {
   display: flex;
   gap: 8px;
@@ -218,22 +234,6 @@ td.empty {
   font-weight: 600;
 }
 
-.badge {
-  font-size: 0.75rem;
-  font-weight: normal;
-  padding: 0 6px;
-  border-radius: 4px;
-}
-
-.badge.required {
-  background: #fdecea;
-  color: var(--color-required);
-}
-
-.badge.optional {
-  background: var(--color-bg);
-  color: var(--color-muted);
-}
 
 .field-error {
   margin: 0;

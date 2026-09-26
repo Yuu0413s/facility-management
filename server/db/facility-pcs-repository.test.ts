@@ -37,12 +37,22 @@ describe.skipIf(!databaseUrl)('facilityPcRepository（Neon テスト用ブラン
   describe('create / findById', () => {
     it('登録した行を id 付きで返し、id で取得できる', async () => {
       const created = await repository.create({ ...baseInput, remarks: '1行目\n2行目' })
-      expect(created).toEqual({ ...baseInput, remarks: '1行目\n2行目', id: expect.any(Number) })
+      expect(created).toEqual({ ...baseInput, remarks: '1行目\n2行目', id: expect.any(Number), registeredOn: expect.any(String) })
       expect(await repository.findById(created.id)).toEqual(created)
     })
 
     it('存在しない id は null', async () => {
       expect(await repository.findById(999999)).toBeNull()
+    })
+
+    it('登録日は登録日時（created_at）を日本時間の日付にしたもの', async () => {
+      const created = await repository.create(baseInput)
+      // UTC では 9/25 15:30 だが、日本時間では 9/26 0:30
+      await sql`UPDATE facility_pcs SET created_at = '2026-09-25T15:30:00Z' WHERE id = ${created.id}`
+      expect((await repository.findById(created.id))?.registeredOn).toBe('2026-09-26')
+      const [listed] = (await repository.list({ sort: 'facilityName', order: 'asc', page: 1 })).items
+      expect(listed.registeredOn).toBe('2026-09-26')
+      expect((await repository.listAll())[0].registeredOn).toBe('2026-09-26')
     })
 
     it('同じ施設に同じPC名は登録できない', async () => {
@@ -56,11 +66,61 @@ describe.skipIf(!databaseUrl)('facilityPcRepository（Neon テスト用ブラン
     })
   })
 
+  describe('空欄（NULL）の扱い', () => {
+    const onlyNames = (facilityName: string | null, pcName: string | null): FacilityPcInput => ({
+      facilityName,
+      pcName,
+      installedOn: null,
+      osVersion: null,
+      officeType: null,
+      officeVersion: null,
+      licenseKey: null,
+      account: null,
+      password: null,
+      remarks: null,
+    })
+
+    it('空欄の項目は null のまま保存・取得できる', async () => {
+      const created = await repository.create(onlyNames('中央病院', 'PC-001'))
+      expect(await repository.findById(created.id)).toEqual({ ...onlyNames('中央病院', 'PC-001'), id: created.id, registeredOn: created.registeredOn })
+    })
+
+    it('施設名かPC名が空欄の行は、重複チェックの対象外になる', async () => {
+      await repository.create(onlyNames('中央病院', null))
+      await expect(repository.create(onlyNames('中央病院', null))).resolves.toBeDefined()
+      await repository.create(onlyNames(null, 'PC-001'))
+      await expect(repository.create(onlyNames(null, 'PC-001'))).resolves.toBeDefined()
+    })
+
+    it.each(['asc', 'desc'] as const)('施設名で並べ替えると、施設名が空欄の行は %s でも最後', async (order) => {
+      await repository.create(onlyNames(null, 'PC-0'))
+      await repository.create(onlyNames('B病院', 'PC-1'))
+      await repository.create(onlyNames('A病院', 'PC-2'))
+      const result = await repository.list({ sort: 'facilityName', order, page: 1 })
+      expect(result.items.map((item) => item.facilityName).at(-1)).toBeNull()
+    })
+
+    it.each(['asc', 'desc'] as const)('PC名で並べ替えると、PC名が空欄の行は %s でも最後', async (order) => {
+      await repository.create(onlyNames('A病院', null))
+      await repository.create(onlyNames('B病院', 'PC-1'))
+      await repository.create(onlyNames('C病院', 'PC-2'))
+      const result = await repository.list({ sort: 'pcName', order, page: 1 })
+      expect(result.items.map((item) => item.pcName).at(-1)).toBeNull()
+    })
+
+    it('同じ施設の中では、PC名が空欄の行が最後', async () => {
+      await repository.create(onlyNames('A病院', null))
+      await repository.create(onlyNames('A病院', 'PC-1'))
+      const result = await repository.list({ sort: 'facilityName', order: 'asc', page: 1 })
+      expect(result.items.map((item) => item.pcName)).toEqual(['PC-1', null])
+    })
+  })
+
   describe('update', () => {
     it('内容を更新し、updated_at を進める', async () => {
       const created = await repository.create(baseInput)
       const updated = await repository.update(created.id, { ...baseInput, osVersion: 'Windows 11 24H2', remarks: 'メモ' })
-      expect(updated).toEqual({ ...baseInput, id: created.id, osVersion: 'Windows 11 24H2', remarks: 'メモ' })
+      expect(updated).toEqual({ ...baseInput, id: created.id, registeredOn: created.registeredOn, osVersion: 'Windows 11 24H2', remarks: 'メモ' })
 
       const [row] = await sql`SELECT updated_at > created_at AS advanced FROM facility_pcs WHERE id = ${created.id}`
       expect(row.advanced).toBe(true)
@@ -118,6 +178,37 @@ describe.skipIf(!databaseUrl)('facilityPcRepository（Neon テスト用ブラン
       await seed([['C病院', 'PC-2'], ['A病院', 'PC-9'], ['B病院', 'PC-2']])
       const result = await repository.list({ sort: 'pcName', order: 'desc', page: 1 })
       expect(names(result.items)).toEqual(['A病院/PC-9', 'B病院/PC-2', 'C病院/PC-2'])
+    })
+
+    describe('設置日・登録日での並べ替え', () => {
+      const withDate = async (facilityName: string, installedOn: string | null, createdAt: string) => {
+        const created = await repository.create({ ...baseInput, facilityName, pcName: 'PC-1', installedOn })
+        await sql`UPDATE facility_pcs SET created_at = ${createdAt} WHERE id = ${created.id}`
+      }
+
+      beforeEach(async () => {
+        await withDate('C病院', '2026-03-01', '2026-09-26T01:00:00Z')
+        await withDate('A病院', null, '2026-09-25T00:00:00Z')
+        await withDate('B病院', '2026-03-01', '2026-09-26T00:30:00Z')
+        await withDate('D病院', '2025-01-01', '2026-09-26T00:00:00Z')
+      })
+
+      it('設置日の昇順。同じ日付は施設名の昇順、空欄は最後', async () => {
+        const result = await repository.list({ sort: 'installedOn', order: 'asc', page: 1 })
+        expect(result.items.map((item) => item.facilityName)).toEqual(['D病院', 'B病院', 'C病院', 'A病院'])
+      })
+
+      it('設置日の降順でも、同じ日付は施設名の昇順、空欄は最後', async () => {
+        const result = await repository.list({ sort: 'installedOn', order: 'desc', page: 1 })
+        expect(result.items.map((item) => item.facilityName)).toEqual(['B病院', 'C病院', 'D病院', 'A病院'])
+      })
+
+      it('登録日は同じ日でも登録した時刻の順に並ぶ', async () => {
+        const asc = await repository.list({ sort: 'registeredOn', order: 'asc', page: 1 })
+        expect(asc.items.map((item) => item.facilityName)).toEqual(['A病院', 'D病院', 'B病院', 'C病院'])
+        const desc = await repository.list({ sort: 'registeredOn', order: 'desc', page: 1 })
+        expect(desc.items.map((item) => item.facilityName)).toEqual(['C病院', 'B病院', 'D病院', 'A病院'])
+      })
     })
 
     it('施設名の部分一致で絞り込み、total も絞り込み後の件数になる', async () => {

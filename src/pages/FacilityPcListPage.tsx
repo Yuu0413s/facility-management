@@ -1,11 +1,11 @@
-import { useEffect, useState, type FormEvent } from 'react'
+import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { Link, useSearchParams } from 'react-router'
 import { listQuerySchema, type FacilityPc, type FacilityPcPage, type ListQuery } from '../../shared/facility-pc-schema'
 import { deleteFacilityPc, fetchFacilityPcPage } from '../api/facility-pcs-client'
 import { Pagination } from '../components/Pagination'
 import { SecretCell } from '../components/SecretCell'
 import { toDisplayDate } from '../lib/date'
-import { exportFacilityPcsToExcel } from '../lib/export-excel'
+import { exportFacilityPcsToExcel, type ExportKind } from '../lib/export-excel'
 import { FACILITY_PC_LABELS as LABELS } from '../lib/facility-pc-labels'
 
 const DEFAULT_QUERY: ListQuery = { order: 'asc', page: 1 }
@@ -81,10 +81,10 @@ export function FacilityPcListPage() {
     }
   }
 
-  const handleExport = async () => {
+  const handleExport = async (kind: ExportKind) => {
     setIsExporting(true)
     try {
-      await exportFacilityPcsToExcel()
+      await exportFacilityPcsToExcel(kind)
     } catch (e) {
       setError(errorMessage(e))
     } finally {
@@ -99,9 +99,7 @@ export function FacilityPcListPage() {
       <header className="page-header">
         <h1>施設PC一覧</h1>
         <div className="actions">
-          <button type="button" onClick={handleExport} disabled={isExporting}>
-            {isExporting ? '出力中…' : 'Excel出力'}
-          </button>
+          <ExportMenu isExporting={isExporting} onSelect={handleExport} />
           <Link className="button primary" to="/new" state={{ returnTo }}>
             新規登録
           </Link>
@@ -196,5 +194,66 @@ export function FacilityPcListPage() {
         </>
       )}
     </main>
+  )
+}
+
+const EXPORT_OPTIONS: Array<{ kind: ExportKind; label: string }> = [
+  { kind: 'all', label: '全件出力' },
+  { kind: 'account', label: 'アカウント情報出力' },
+]
+
+function ExportMenu({ isExporting, onSelect }: { isExporting: boolean; onSelect: (kind: ExportKind) => void }) {
+  const [isOpen, setIsOpen] = useState(false)
+  const containerRef = useRef<HTMLDivElement>(null)
+  const triggerRef = useRef<HTMLButtonElement>(null)
+
+  // 開いている間だけ、外側のクリックと Esc キーで閉じられるようにする
+  useEffect(() => {
+    if (!isOpen) return
+    const handlePointerDown = (event: PointerEvent) => {
+      if (!containerRef.current?.contains(event.target as Node)) setIsOpen(false)
+    }
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return
+      setIsOpen(false)
+      triggerRef.current?.focus()
+    }
+    document.addEventListener('pointerdown', handlePointerDown)
+    document.addEventListener('keydown', handleKeyDown)
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDown)
+      document.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [isOpen])
+
+  return (
+    <div className="export-menu" ref={containerRef}>
+      <button
+        ref={triggerRef}
+        type="button"
+        aria-expanded={isOpen}
+        aria-controls="export-menu-options"
+        onClick={() => setIsOpen(!isOpen)}
+        disabled={isExporting}
+      >
+        {isExporting ? '出力中…' : 'Excel出力'}
+      </button>
+      {isOpen && (
+        <div id="export-menu-options" className="export-menu-options">
+          {EXPORT_OPTIONS.map(({ kind, label }) => (
+            <button
+              key={kind}
+              type="button"
+              onClick={() => {
+                setIsOpen(false)
+                onSelect(kind)
+              }}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
   )
 }

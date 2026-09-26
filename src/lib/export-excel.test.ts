@@ -20,7 +20,7 @@ const rows: FacilityPc[] = [
 
 describe('buildFacilityPcWorkbook', () => {
   it('見出し行と、パスワード・Keyを含む全項目を画面と同じ表記で出力する', async () => {
-    const workbook = await buildFacilityPcWorkbook(rows)
+    const workbook = await buildFacilityPcWorkbook(rows, 'all')
     const sheet = workbook.getWorksheet('施設PC一覧')!
     const values = (rowNumber: number) => (sheet.getRow(rowNumber).values as unknown[]).slice(1)
 
@@ -31,8 +31,26 @@ describe('buildFacilityPcWorkbook', () => {
   })
 })
 
+describe('buildFacilityPcWorkbook（アカウント情報）', () => {
+  it('PC名・アカウント・パスワードの3列だけを全件出力する', async () => {
+    const workbook = await buildFacilityPcWorkbook(rows, 'account')
+    expect(workbook.worksheets.map((sheet) => sheet.name)).toEqual(['アカウント情報'])
+    const sheet = workbook.getWorksheet('アカウント情報')!
+    const values = (rowNumber: number) => (sheet.getRow(rowNumber).values as unknown[]).slice(1)
+
+    expect(values(1)).toEqual(['PC名', 'アカウント', 'パスワード'])
+    expect(values(2)).toEqual(['PC-001', 'user1', 'secret'])
+    expect(values(3)).toEqual(['PC-002', 'user2', 'pw'])
+    expect(sheet.rowCount).toBe(3)
+    expect(sheet.columnCount).toBe(3)
+  })
+})
+
 describe('excelFileName', () => {
-  it('出力日をファイル名に入れる', () => {
-    expect(excelFileName(new Date(2026, 8, 6))).toBe('施設PC一覧_20260906.xlsx')
+  it.each([
+    ['all', '施設PC一覧_20260906.xlsx'],
+    ['account', 'アカウント情報_20260906.xlsx'],
+  ] as const)('%s は出力日を入れて %s にする', (kind, expected) => {
+    expect(excelFileName(kind, new Date(2026, 8, 6))).toBe(expected)
   })
 })

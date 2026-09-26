@@ -62,7 +62,10 @@ beforeEach(() => {
   // 前のテストで使われずに残った mockResolvedValueOnce を持ち越さない
   vi.mocked(fetchFacilityPcPage).mockReset().mockResolvedValue(pageOf([pc]))
 })
-afterEach(() => vi.restoreAllMocks())
+afterEach(() => {
+  vi.restoreAllMocks()
+  vi.mocked(exportFacilityPcsToExcel).mockReset()
+})
 
 describe('FacilityPcListPage', () => {
   it('1ページ目を施設名の昇順で取得し、全項目を表示する（日付は yyyy/mm/dd、Keyとパスワードは伏せる）', async () => {
@@ -149,10 +152,66 @@ describe('FacilityPcListPage', () => {
     expect(screen.getByText('登録ページ')).toBeInTheDocument()
   })
 
-  it('Excel出力ボタンで全件を出力する', async () => {
-    renderPage()
-    await userEvent.click(await screen.findByRole('button', { name: 'Excel出力' }))
-    expect(exportFacilityPcsToExcel).toHaveBeenCalled()
+  describe('Excel出力メニュー', () => {
+    const openMenu = async () => {
+      const trigger = await screen.findByRole('button', { name: 'Excel出力' })
+      await userEvent.click(trigger)
+      return trigger
+    }
+
+    it('ボタンを押すとメニューが開き、全件出力とアカウント情報出力を選べる', async () => {
+      renderPage()
+      const trigger = await screen.findByRole('button', { name: 'Excel出力' })
+      expect(trigger).toHaveAttribute('aria-expanded', 'false')
+      expect(screen.queryByRole('button', { name: '全件出力' })).not.toBeInTheDocument()
+
+      await userEvent.click(trigger)
+      expect(trigger).toHaveAttribute('aria-expanded', 'true')
+      expect(screen.getByRole('button', { name: '全件出力' })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'アカウント情報出力' })).toBeInTheDocument()
+    })
+
+    it.each([
+      ['全件出力', 'all'],
+      ['アカウント情報出力', 'account'],
+    ] as const)('「%s」を選ぶと %s で出力し、メニューを閉じる', async (label, kind) => {
+      vi.mocked(exportFacilityPcsToExcel).mockResolvedValue()
+      renderPage()
+      await openMenu()
+      await userEvent.click(screen.getByRole('button', { name: label }))
+
+      expect(exportFacilityPcsToExcel).toHaveBeenCalledWith(kind)
+      expect(screen.queryByRole('button', { name: label })).not.toBeInTheDocument()
+    })
+
+    it('Esc キーでメニューを閉じ、ボタンにフォーカスを戻す', async () => {
+      renderPage()
+      const trigger = await openMenu()
+      await userEvent.keyboard('{Escape}')
+      expect(screen.queryByRole('button', { name: '全件出力' })).not.toBeInTheDocument()
+      expect(trigger).toHaveFocus()
+    })
+
+    it('メニューの外をクリックすると閉じる', async () => {
+      renderPage()
+      await openMenu()
+      await userEvent.click(screen.getByRole('heading', { name: '施設PC一覧' }))
+      expect(screen.queryByRole('button', { name: '全件出力' })).not.toBeInTheDocument()
+      expect(exportFacilityPcsToExcel).not.toHaveBeenCalled()
+    })
+
+    it('出力中はボタンを押せず、失敗したらエラーを表示する', async () => {
+      let reject!: (error: Error) => void
+      vi.mocked(exportFacilityPcsToExcel).mockReturnValue(new Promise((_, r) => (reject = r)))
+      renderPage()
+      await openMenu()
+      await userEvent.click(screen.getByRole('button', { name: 'アカウント情報出力' }))
+      expect(screen.getByRole('button', { name: '出力中…' })).toBeDisabled()
+
+      reject(new Error('通信に失敗しました（502）'))
+      expect(await screen.findByRole('alert')).toHaveTextContent('通信に失敗しました（502）')
+      expect(screen.getByRole('button', { name: 'Excel出力' })).toBeEnabled()
+    })
   })
 
   it('0件ならその旨を表示する', async () => {
